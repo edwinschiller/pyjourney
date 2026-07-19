@@ -1,0 +1,7 @@
+<svg width="720" height="220" viewBox="0 0 720 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="54" y="44" width="92" height="92" rx="28" fill="#2e72ab"/>
+  <rect x="96" y="86" width="50" height="50" rx="12" fill="#10273b" fill-opacity="0.9"/>
+  <rect x="100" y="90" width="92" height="92" rx="28" fill="#fec42c"/>
+  <text x="270" y="105" fill="#10273b" font-family="Geist, Inter, Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="0">PyJourney</text>
+  <text x="272" y="157" fill="#60748a" font-family="Geist, Inter, Arial, sans-serif" font-size="34" font-weight="500" letter-spacing="0">Learn Python</text>
+</svg>
