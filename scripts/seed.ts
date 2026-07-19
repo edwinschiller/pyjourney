@@ -1,13 +1,18 @@
 import { config } from "dotenv"
 
-import { seedConcepts } from "../lib/db/seed"
+import { seedAcademy, seedConcepts } from "../lib/db/seed"
 
 config({ path: ".env.local" })
 
 const main = async () => {
-  const result = await seedConcepts()
+  const concepts = await seedConcepts()
   console.log(
-    `Seeded ${result.concepts} concepts and ${result.prerequisites} prerequisites.`
+    `Seeded ${concepts.concepts} concepts and ${concepts.prerequisites} prerequisites.`
+  )
+
+  const academy = await seedAcademy()
+  console.log(
+    `Seeded classroom "${academy.name}" (join code: ${academy.joinCode}).`
   )
 }
 

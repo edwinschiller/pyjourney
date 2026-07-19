@@ -121,3 +121,13 @@ export const seedConcepts = async () => {
     prerequisites: PREREQUISITE_EDGES.length,
   }
 }
+
+export const seedAcademy = async () => {
+  const { ensureAcademyClassroom } = await import("./academy")
+  const classroom = await ensureAcademyClassroom()
+  return {
+    classroomId: classroom.id,
+    joinCode: classroom.joinCode,
+    name: classroom.name,
+  }
+}
