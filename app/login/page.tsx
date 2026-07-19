@@ -1,3 +1,5 @@
+import { Suspense } from "react"
+
 import { AuthForm } from "@/components/auth/auth-form"
 
 const LoginPage = () => {
@@ -14,7 +16,15 @@ const LoginPage = () => {
         />
       </div>
       <div className="relative z-10 w-full">
-        <AuthForm />
+        <Suspense
+          fallback={
+            <div className="app-surface mx-auto w-full max-w-md rounded-2xl p-8 text-center text-sm text-[var(--app-muted)]">
+              Loading…
+            </div>
+          }
+        >
+          <AuthForm />
+        </Suspense>
       </div>
     </div>
   )

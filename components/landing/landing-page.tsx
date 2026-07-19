@@ -166,7 +166,7 @@ export const LandingPage = () => {
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button asChild size="lg">
-                  <Link href="/login" aria-label="Get started">
+                  <Link href="/login?mode=register" aria-label="Get started">
                     Get started
                     <ArrowRight className="h-4 w-4" aria-hidden />
                   </Link>
@@ -325,7 +325,7 @@ export const LandingPage = () => {
               </p>
               <div className="mx-auto mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
                 <Button asChild size="lg" className="sm:flex-1">
-                  <Link href="/login" aria-label="Create an account">
+                  <Link href="/login?mode=register" aria-label="Create an account">
                     Create account
                     <ArrowRight className="h-4 w-4" aria-hidden />
                   </Link>

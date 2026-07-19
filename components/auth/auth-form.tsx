@@ -2,7 +2,7 @@
 
 import { Check, GraduationCap, School } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState, type ComponentType, type FormEvent } from "react"
 
 import { PyJourneyLogo } from "@/components/brand/pyjourney-logo"
@@ -98,7 +98,10 @@ const RoleSwitch = ({
 
 export const AuthForm = () => {
   const router = useRouter()
-  const [mode, setMode] = useState<AuthMode>("signin")
+  const searchParams = useSearchParams()
+  const initialMode: AuthMode =
+    searchParams.get("mode") === "register" ? "register" : "signin"
+  const [mode, setMode] = useState<AuthMode>(initialMode)
   const [step, setStep] = useState<AuthStep>("credentials")
   const [accountRole, setAccountRole] = useState<AccountRole>("student")
   const [email, setEmail] = useState("")
@@ -459,6 +462,15 @@ export const AuthForm = () => {
           </button>
         </form>
       )}
+
+      <p className="mt-2 text-center">
+        <Link
+          href="/"
+          className="text-sm text-[var(--app-muted)] underline-offset-4 hover:text-[var(--app-fg)] hover:underline"
+        >
+          ← Back to home
+        </Link>
+      </p>
     </div>
   )
 }
