@@ -77,3 +77,5 @@ export const PACE_OPTIONS: Array<{
 
 export const MAX_INTEREST_TAGS = 3
 export const MAX_GOAL_LENGTH = 120
+export const MAX_INTEREST_LENGTH = 40
+export const CUSTOM_GOAL_VALUE = "custom"
