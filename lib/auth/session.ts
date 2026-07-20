@@ -16,6 +16,7 @@ import {
   hints,
   lessons,
   profiles,
+  savedPrograms,
   studentInsightReports,
 } from "@/lib/db"
 import { ensureAcademyMembership } from "@/lib/db/academy"
@@ -102,6 +103,10 @@ const relinkProfileId = async (oldId: string, newId: string) => {
     .update(codeSnapshots)
     .set({ studentId: newId })
     .where(eq(codeSnapshots.studentId, oldId))
+  await db
+    .update(savedPrograms)
+    .set({ studentId: newId })
+    .where(eq(savedPrograms.studentId, oldId))
   await db
     .update(exerciseAttempts)
     .set({ studentId: newId })

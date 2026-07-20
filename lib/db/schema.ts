@@ -42,6 +42,10 @@ export const assignmentStatusEnum = pgEnum("assignment_recipient_status", [
   "in_progress",
   "completed",
 ])
+export const savedProgramSourceEnum = pgEnum("saved_program_source", [
+  "ide",
+  "lesson",
+])
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -401,6 +405,27 @@ export const classInsightReports = pgTable(
   },
   (table) => [
     index("class_insight_reports_classroom_id_idx").on(table.classroomId),
+  ]
+)
+
+export const savedPrograms = pgTable(
+  "saved_programs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => profiles.id),
+    title: text("title").notNull(),
+    code: text("code").notNull(),
+    source: savedProgramSourceEnum("source").notNull().default("ide"),
+    ...timestamps,
+  },
+  (table) => [
+    index("saved_programs_student_id_idx").on(table.studentId),
+    index("saved_programs_student_updated_idx").on(
+      table.studentId,
+      table.updatedAt
+    ),
   ]
 )
 

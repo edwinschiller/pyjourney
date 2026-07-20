@@ -4,6 +4,7 @@ import {
   BookOpen,
   ClipboardList,
   Code2,
+  FolderOpen,
   LayoutDashboard,
   School,
   Users,
@@ -20,7 +21,8 @@ export type NavLink = {
 export const STUDENT_NAV: NavLink[] = [
   { href: "/student", label: "Dashboard", icon: LayoutDashboard },
   { href: "/student/learn", label: "Learn", icon: BookOpen },
-  { href: "/student/code", label: "Free coding", icon: Code2 },
+  { href: "/student/code", label: "IDE", icon: Code2 },
+  { href: "/student/programs", label: "Programs", icon: FolderOpen },
   { href: "/student/insights", label: "Insights", icon: BarChart3 },
 ]
 
