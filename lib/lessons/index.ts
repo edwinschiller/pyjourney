@@ -17,5 +17,4 @@ export {
   type LessonTest,
 } from "./schema"
 export { buildLearningPath } from "./path"
-export { runLessonDirector } from "./adapt/director"
 export { adaptLessonWithRules } from "./adapt/rules"
