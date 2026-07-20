@@ -1,6 +1,8 @@
+import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { LessonPlayer } from "@/components/lessons/player/lesson-player"
+import { LessonWorkspace } from "@/components/lessons/lesson-workspace"
+import { Button } from "@/components/ui/button"
 import { requireStudentWithOnboarding } from "@/lib/auth/session"
 import { getLessonForStudent } from "@/lib/lessons/queries"
 
@@ -20,12 +22,19 @@ const StudentLessonPage = async ({ params }: LessonPageProps) => {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col p-4 md:p-6">
-      <LessonPlayer
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-3 md:px-6">
+      <div className="shrink-0">
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/student/learn" aria-label="Back to Learn hub">
+            ← Learn
+          </Link>
+        </Button>
+      </div>
+      <LessonWorkspace
         lessonId={lesson.id}
         conceptTitle={lesson.conceptTitle}
-        initialSession={lesson.content}
         status={lesson.status}
+        content={lesson.content}
       />
     </div>
   )
