@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm"
 import { redirect } from "next/navigation"
+import { cache } from "react"
 
 import { getAuth, isNeonAuthConfigured } from "@/lib/auth/server"
 import {
@@ -20,6 +21,7 @@ import {
   studentInsightReports,
 } from "@/lib/db"
 import { ensureAcademyMembership } from "@/lib/db/academy"
+import { withDbRetry } from "@/lib/db/retry"
 import { isOnboardingComplete } from "@/lib/onboarding/parse"
 
 export type UserRole = "student" | "teacher" | "admin"
@@ -127,90 +129,91 @@ const relinkProfileId = async (oldId: string, newId: string) => {
 
 export const ensureProfile = async (
   input: EnsureProfileInput
-): Promise<SessionUser> => {
-  const db = getDb()
-  const existingById = await db
-    .select()
-    .from(profiles)
-    .where(eq(profiles.id, input.id))
-    .limit(1)
+): Promise<SessionUser> =>
+  withDbRetry(async () => {
+    const db = getDb()
+    const existingById = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, input.id))
+      .limit(1)
 
-  if (existingById[0]) {
-    const row = existingById[0]
-    const nextRole = resolveRole(input, row.role)
-    const shouldUpdateEmail = row.email !== input.email
-    const shouldUpdateRole = nextRole !== row.role
+    if (existingById[0]) {
+      const row = existingById[0]
+      const nextRole = resolveRole(input, row.role)
+      const shouldUpdateEmail = row.email !== input.email
+      const shouldUpdateRole = nextRole !== row.role
 
-    if (shouldUpdateEmail || shouldUpdateRole) {
-      const [updated] = await db
+      if (shouldUpdateEmail || shouldUpdateRole) {
+        const [updated] = await db
+          .update(profiles)
+          .set({
+            ...(shouldUpdateEmail ? { email: input.email } : {}),
+            ...(shouldUpdateRole ? { role: nextRole } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(profiles.id, input.id))
+          .returning()
+        return toSessionUser(updated)
+      }
+      return toSessionUser(row)
+    }
+
+    const emailKey = input.email.trim().toLowerCase()
+    const existingByEmail = await db
+      .select()
+      .from(profiles)
+      .where(sql`lower(${profiles.email}) = ${emailKey}`)
+      .limit(1)
+
+    if (existingByEmail[0]) {
+      const old = existingByEmail[0]
+      const nextRole = resolveRole(input, old.role)
+
+      // Free the unique email, create row for current Neon id, move FKs, drop stale row
+      await db
         .update(profiles)
         .set({
-          ...(shouldUpdateEmail ? { email: input.email } : {}),
-          ...(shouldUpdateRole ? { role: nextRole } : {}),
+          email: `${old.email}.relocated.${old.id}`,
           updatedAt: new Date(),
         })
-        .where(eq(profiles.id, input.id))
+        .where(eq(profiles.id, old.id))
+
+      const [created] = await db
+        .insert(profiles)
+        .values({
+          id: input.id,
+          email: input.email,
+          displayName: input.displayName ?? old.displayName,
+          role: nextRole,
+          status: old.status,
+          onboarding: old.onboarding,
+        })
         .returning()
-      return toSessionUser(updated)
+
+      await relinkProfileId(old.id, input.id)
+      await db.delete(profiles).where(eq(profiles.id, old.id))
+
+      return toSessionUser(created)
     }
-    return toSessionUser(row)
-  }
 
-  const emailKey = input.email.trim().toLowerCase()
-  const existingByEmail = await db
-    .select()
-    .from(profiles)
-    .where(sql`lower(${profiles.email}) = ${emailKey}`)
-    .limit(1)
-
-  if (existingByEmail[0]) {
-    const old = existingByEmail[0]
-    const nextRole = resolveRole(input, old.role)
-
-    // Free the unique email, create row for current Neon id, move FKs, drop stale row
-    await db
-      .update(profiles)
-      .set({
-        email: `${old.email}.relocated.${old.id}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(profiles.id, old.id))
+    const role = resolveRole(input)
 
     const [created] = await db
       .insert(profiles)
       .values({
         id: input.id,
         email: input.email,
-        displayName: input.displayName ?? old.displayName,
-        role: nextRole,
-        status: old.status,
-        onboarding: old.onboarding,
+        displayName: input.displayName ?? null,
+        role,
+        status: "active",
       })
       .returning()
 
-    await relinkProfileId(old.id, input.id)
-    await db.delete(profiles).where(eq(profiles.id, old.id))
-
     return toSessionUser(created)
-  }
+  }, { label: "ensureProfile" })
 
-  const role = resolveRole(input)
-
-  const [created] = await db
-    .insert(profiles)
-    .values({
-      id: input.id,
-      email: input.email,
-      displayName: input.displayName ?? null,
-      role,
-      status: "active",
-    })
-    .returning()
-
-  return toSessionUser(created)
-}
-
-export const getSessionUser = async (): Promise<SessionUser | null> => {
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   if (!isNeonAuthConfigured()) {
     return null
   }
@@ -234,11 +237,16 @@ export const getSessionUser = async (): Promise<SessionUser | null> => {
   })
 
   if (profile.role === "student") {
-    await ensureAcademyMembership(profile.id)
+    try {
+      await ensureAcademyMembership(profile.id)
+    } catch (error) {
+      // Don't block the whole app on a transient membership write.
+      console.error("ensureAcademyMembership soft-fail", error)
+    }
   }
 
   return profile
-}
+})
 
 export const requireRole = async (roles: UserRole[]): Promise<SessionUser> => {
   const user = await getSessionUser()
