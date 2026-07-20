@@ -2,7 +2,6 @@
 
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
 
 import { requireRole } from "@/lib/auth/session"
 import {
@@ -21,6 +20,7 @@ export type ClassroomActionState = {
   ok: boolean
   error?: string
   message?: string
+  redirectTo?: string
 } | null
 
 const MIN_NAME_LENGTH = 3
@@ -82,7 +82,12 @@ export const createClassroomAction = async (
   }
 
   revalidateTeacherPaths(classroomId)
-  redirect(`/teacher/classes/${classroomId}`)
+  // Client navigates via router.push — server redirect() after actions can
+  // render the target RSC without auth cookies and bounce to /login.
+  return {
+    ok: true,
+    redirectTo: `/teacher/classes/${classroomId}`,
+  }
 }
 
 export const renameClassroomAction = async (
@@ -183,6 +188,45 @@ export const regenerateJoinCodeAction = async (
     }
     console.error("regenerateJoinCodeAction", error)
     return { ok: false, error: "Could not regenerate join code." }
+  }
+}
+
+export const deleteClassroomAction = async (
+  _prev: ClassroomActionState,
+  formData: FormData
+): Promise<ClassroomActionState> => {
+  const user = await requireRole(["teacher"])
+  const classroomId = String(formData.get("classroomId") ?? "")
+  const confirmed = String(formData.get("confirmDelete") ?? "") === "on"
+
+  if (!classroomId) {
+    return { ok: false, error: "Missing classroom." }
+  }
+  if (!confirmed) {
+    return {
+      ok: false,
+      error: "Confirm deletion before removing this class.",
+    }
+  }
+
+  try {
+    await assertTeacherOwnsClassroom(user.id, classroomId)
+    const db = getDb()
+    // Memberships and class-scoped rows cascade; student profiles stay.
+    await db.delete(classrooms).where(eq(classrooms.id, classroomId))
+
+    revalidateTeacherPaths()
+    revalidatePath("/student")
+    return {
+      ok: true,
+      redirectTo: "/teacher/classes",
+    }
+  } catch (error) {
+    if (error instanceof ClassroomAccessError) {
+      return { ok: false, error: error.message }
+    }
+    console.error("deleteClassroomAction", error)
+    return { ok: false, error: "Could not delete the class." }
   }
 }
 

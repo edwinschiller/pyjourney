@@ -1,6 +1,7 @@
 "use client"
 
-import { useActionState } from "react"
+import { useRouter } from "next/navigation"
+import { useActionState, useEffect } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,10 +14,19 @@ import {
 const initialState: ClassroomActionState = null
 
 export const CreateClassroomForm = () => {
+  const router = useRouter()
   const [state, formAction, pending] = useActionState(
     createClassroomAction,
     initialState
   )
+
+  useEffect(() => {
+    if (!state?.ok || !state.redirectTo) {
+      return
+    }
+    router.push(state.redirectTo)
+    router.refresh()
+  }, [state, router])
 
   return (
     <form
@@ -39,7 +49,7 @@ export const CreateClassroomForm = () => {
           required
           minLength={3}
           maxLength={80}
-          placeholder="e.g. Period 3 Python"
+          placeholder="11A Informatics"
           aria-label="Class name"
           disabled={pending}
         />

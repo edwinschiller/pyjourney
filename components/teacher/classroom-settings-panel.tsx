@@ -1,13 +1,15 @@
 "use client"
 
 import { Check, Copy } from "lucide-react"
-import { useActionState, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useActionState, useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   archiveClassroomAction,
+  deleteClassroomAction,
   regenerateJoinCodeAction,
   renameClassroomAction,
   type ClassroomActionState,
@@ -55,6 +57,7 @@ export const ClassroomSettingsPanel = ({
   joinCode,
   archived,
 }: ClassroomSettingsProps) => {
+  const router = useRouter()
   const [renameState, renameAction, renamePending] = useActionState(
     renameClassroomAction,
     initialState
@@ -67,9 +70,25 @@ export const ClassroomSettingsPanel = ({
     regenerateJoinCodeAction,
     initialState
   )
+  const [deleteState, deleteAction, deletePending] = useActionState(
+    deleteClassroomAction,
+    initialState
+  )
+
+  useEffect(() => {
+    if (!deleteState?.ok || !deleteState.redirectTo) {
+      return
+    }
+    router.push(deleteState.redirectTo)
+    router.refresh()
+  }, [deleteState, router])
 
   const error =
-    renameState?.error ?? archiveState?.error ?? regenState?.error ?? null
+    renameState?.error ??
+    archiveState?.error ??
+    regenState?.error ??
+    deleteState?.error ??
+    null
   const feedback =
     renameState?.message ??
     archiveState?.message ??
@@ -157,7 +176,7 @@ export const ClassroomSettingsPanel = ({
           />
           <Button
             type="submit"
-            variant={archived ? "default" : "destructive"}
+            variant={archived ? "default" : "outline"}
             disabled={archivePending}
             aria-label={archived ? "Restore class" : "Archive class"}
           >
@@ -169,6 +188,43 @@ export const ClassroomSettingsPanel = ({
           </Button>
         </form>
       </div>
+
+      <form
+        action={deleteAction}
+        className="app-surface flex flex-col gap-3 rounded-xl border-[color-mix(in_oklch,var(--destructive),transparent_70%)] p-5"
+      >
+        <input type="hidden" name="classroomId" value={classroomId} />
+        <div>
+          <h3 className="font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+            Delete class
+          </h3>
+          <p className="mt-1 text-sm text-[var(--app-muted)]">
+            Removes this class and its memberships. Student accounts are not
+            deleted.
+          </p>
+        </div>
+        <label className="flex items-start gap-2 text-sm text-[var(--app-fg)]">
+          <input
+            type="checkbox"
+            name="confirmDelete"
+            className="mt-1 size-4 accent-[var(--brand-blue)]"
+            aria-label="Confirm class deletion"
+            disabled={deletePending}
+          />
+          <span>
+            I understand this permanently deletes “{name}” and unenrolls its
+            students.
+          </span>
+        </label>
+        <Button
+          type="submit"
+          variant="destructive"
+          disabled={deletePending}
+          aria-label="Delete class permanently"
+        >
+          {deletePending ? "Deleting…" : "Delete class"}
+        </Button>
+      </form>
 
       {error ? (
         <p className="text-sm text-destructive" role="alert">
