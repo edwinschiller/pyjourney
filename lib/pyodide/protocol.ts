@@ -4,12 +4,34 @@ export const PYODIDE_MAX_EXECUTION_STEPS = 50_000
 export const DEFAULT_RUN_TIMEOUT_MS = 8_000
 export const MAX_OUTPUT_CHARS = 80_000
 
+export type LessonTestSpec = {
+  id: string
+  description: string
+  setup?: string
+  assertion?: string
+  expectsStdoutIncludes?: string
+}
+
+export type LessonTestResult = {
+  id: string
+  description: string
+  passed: boolean
+  error?: string
+}
+
 export type PyodideWorkerInboundMessage =
   | { type: "ping" }
   | {
       type: "run"
       requestId: string
       code: string
+      maxSteps?: number
+    }
+  | {
+      type: "runTests"
+      requestId: string
+      code: string
+      tests: LessonTestSpec[]
       maxSteps?: number
     }
   | { type: "interrupt" }
@@ -37,6 +59,16 @@ export type PyodideWorkerOutboundMessage =
       error?: string
     }
   | {
+      type: "testsResult"
+      requestId: string
+      ok: boolean
+      stdout: string
+      stderr: string
+      runtimeMs: number
+      error?: string
+      results: LessonTestResult[]
+    }
+  | {
       type: "fatal"
       message: string
     }
@@ -49,4 +81,15 @@ export type PythonRunResult = {
   error?: string
   timedOut?: boolean
   interrupted?: boolean
+}
+
+export type PythonTestsResult = {
+  ok: boolean
+  stdout: string
+  stderr: string
+  runtimeMs: number
+  error?: string
+  timedOut?: boolean
+  interrupted?: boolean
+  results: LessonTestResult[]
 }

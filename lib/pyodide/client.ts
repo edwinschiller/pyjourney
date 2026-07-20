@@ -1,8 +1,10 @@
 import {
   DEFAULT_RUN_TIMEOUT_MS,
+  type LessonTestSpec,
   type PyodideWorkerInboundMessage,
   type PyodideWorkerOutboundMessage,
   type PythonRunResult,
+  type PythonTestsResult,
 } from "./protocol"
 
 type RunHandlers = {
@@ -10,13 +12,23 @@ type RunHandlers = {
   onStderr?: (text: string) => void
 }
 
-type PendingRun = {
-  resolve: (result: PythonRunResult) => void
-  reject: (error: Error) => void
-  onStdout?: (text: string) => void
-  onStderr?: (text: string) => void
-  timeoutId: number
-}
+type PendingRequest =
+  | {
+      kind: "run"
+      resolve: (result: PythonRunResult) => void
+      reject: (error: Error) => void
+      onStdout?: (text: string) => void
+      onStderr?: (text: string) => void
+      timeoutId: number
+    }
+  | {
+      kind: "tests"
+      resolve: (result: PythonTestsResult) => void
+      reject: (error: Error) => void
+      onStdout?: (text: string) => void
+      onStderr?: (text: string) => void
+      timeoutId: number
+    }
 
 const createRequestId = () =>
   `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -24,7 +36,7 @@ const createRequestId = () =>
 export class PyodideClient {
   private worker: Worker | null = null
   private readyPromise: Promise<void> | null = null
-  private pending = new Map<string, PendingRun>()
+  private pending = new Map<string, PendingRequest>()
   private generation = 0
 
   private createWorker() {
@@ -62,7 +74,7 @@ export class PyodideClient {
 
     if (message.type === "result") {
       const pending = this.pending.get(message.requestId)
-      if (!pending) {
+      if (!pending || pending.kind !== "run") {
         return
       }
       window.clearTimeout(pending.timeoutId)
@@ -74,6 +86,25 @@ export class PyodideClient {
         runtimeMs: message.runtimeMs,
         error: message.error,
         interrupted: message.error === "Execution interrupted.",
+      })
+      return
+    }
+
+    if (message.type === "testsResult") {
+      const pending = this.pending.get(message.requestId)
+      if (!pending || pending.kind !== "tests") {
+        return
+      }
+      window.clearTimeout(pending.timeoutId)
+      this.pending.delete(message.requestId)
+      pending.resolve({
+        ok: message.ok,
+        stdout: message.stdout,
+        stderr: message.stderr,
+        runtimeMs: message.runtimeMs,
+        error: message.error,
+        interrupted: message.error === "Execution interrupted.",
+        results: message.results,
       })
     }
   }
@@ -121,6 +152,44 @@ export class PyodideClient {
     return this.readyPromise
   }
 
+  private armTimeout = (
+    requestId: string,
+    timeoutMs: number,
+    generationAtStart: number
+  ) =>
+    window.setTimeout(() => {
+      const pending = this.pending.get(requestId)
+      if (!pending) {
+        return
+      }
+      this.pending.delete(requestId)
+      this.interrupt()
+      window.setTimeout(() => {
+        if (this.generation === generationAtStart) {
+          this.recycleWorker()
+        }
+      }, 400)
+
+      const timedOut = {
+        ok: false as const,
+        stdout: "",
+        stderr: `Execution timed out after ${timeoutMs}ms.\n`,
+        runtimeMs: timeoutMs,
+        error: `Execution timed out after ${timeoutMs}ms.`,
+        timedOut: true as const,
+      }
+
+      if (pending.kind === "run") {
+        pending.resolve(timedOut)
+        return
+      }
+
+      pending.resolve({
+        ...timedOut,
+        results: [],
+      })
+    }, timeoutMs)
+
   run = async (
     code: string,
     options?: {
@@ -134,29 +203,14 @@ export class PyodideClient {
     const generationAtStart = this.generation
 
     return new Promise<PythonRunResult>((resolve, reject) => {
-      const timeoutId = window.setTimeout(() => {
-        const pending = this.pending.get(requestId)
-        if (!pending) {
-          return
-        }
-        this.pending.delete(requestId)
-        this.interrupt()
-        window.setTimeout(() => {
-          if (this.generation === generationAtStart) {
-            this.recycleWorker()
-          }
-        }, 400)
-        pending.resolve({
-          ok: false,
-          stdout: "",
-          stderr: `Execution timed out after ${timeoutMs}ms.\n`,
-          runtimeMs: timeoutMs,
-          error: `Execution timed out after ${timeoutMs}ms.`,
-          timedOut: true,
-        })
-      }, timeoutMs)
+      const timeoutId = this.armTimeout(
+        requestId,
+        timeoutMs,
+        generationAtStart
+      )
 
       this.pending.set(requestId, {
+        kind: "run",
         resolve,
         reject,
         onStdout: options?.onStdout,
@@ -181,6 +235,55 @@ export class PyodideClient {
     })
   }
 
+  runTests = async (
+    code: string,
+    tests: LessonTestSpec[],
+    options?: {
+      timeoutMs?: number
+      maxSteps?: number
+    } & RunHandlers
+  ): Promise<PythonTestsResult> => {
+    await this.ensureReady()
+    const requestId = createRequestId()
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS
+    const generationAtStart = this.generation
+
+    return new Promise<PythonTestsResult>((resolve, reject) => {
+      const timeoutId = this.armTimeout(
+        requestId,
+        timeoutMs,
+        generationAtStart
+      )
+
+      this.pending.set(requestId, {
+        kind: "tests",
+        resolve,
+        reject,
+        onStdout: options?.onStdout,
+        onStderr: options?.onStderr,
+        timeoutId,
+      })
+
+      try {
+        this.post({
+          type: "runTests",
+          requestId,
+          code,
+          tests,
+          maxSteps: options?.maxSteps,
+        })
+      } catch (error) {
+        window.clearTimeout(timeoutId)
+        this.pending.delete(requestId)
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Failed to start Python tests.")
+        )
+      }
+    })
+  }
+
   interrupt = () => {
     try {
       this.post({ type: "interrupt" })
@@ -192,14 +295,26 @@ export class PyodideClient {
   stop = () => {
     for (const [, pending] of this.pending) {
       window.clearTimeout(pending.timeoutId)
-      pending.resolve({
-        ok: false,
-        stdout: "",
-        stderr: "Execution stopped.\n",
-        runtimeMs: 0,
-        error: "Execution stopped.",
-        interrupted: true,
-      })
+      if (pending.kind === "run") {
+        pending.resolve({
+          ok: false,
+          stdout: "",
+          stderr: "Execution stopped.\n",
+          runtimeMs: 0,
+          error: "Execution stopped.",
+          interrupted: true,
+        })
+      } else {
+        pending.resolve({
+          ok: false,
+          stdout: "",
+          stderr: "Execution stopped.\n",
+          runtimeMs: 0,
+          error: "Execution stopped.",
+          interrupted: true,
+          results: [],
+        })
+      }
     }
     this.pending.clear()
     this.interrupt()

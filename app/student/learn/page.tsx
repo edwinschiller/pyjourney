@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import { StartLessonButton } from "@/components/lessons/start-lesson-button"
 import { Button } from "@/components/ui/button"
 import { requireStudentWithOnboarding } from "@/lib/auth/session"
 import {
@@ -7,6 +8,7 @@ import {
   loadCurriculumGraph,
   resolveNextConceptForStudent,
 } from "@/lib/curriculum"
+import { hasTemplateLessonForSlug } from "@/lib/lessons/templates"
 import {
   getMasteryForConcept,
   getMasteryScoreMapForStudent,
@@ -26,6 +28,9 @@ const StudentLearnPage = async () => {
     : null
 
   const unlocked = listUnlockedConcepts(graph, masteryMap)
+  const nextHasTemplate = next
+    ? hasTemplateLessonForSlug(next.concept.slug)
+    : false
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
@@ -34,8 +39,8 @@ const StudentLearnPage = async () => {
           Learn
         </h1>
         <p className="text-base text-[var(--app-muted)]">
-          Your adaptive path follows mastery and prerequisites. Interactive
-          lessons arrive in the next feature commits.
+          Your adaptive path follows mastery and prerequisites. Open a lesson to
+          read, check understanding, and pass deterministic tests.
         </p>
       </header>
 
@@ -62,10 +67,18 @@ const StudentLearnPage = async () => {
                 ? " · Teacher assignment"
                 : " · Adaptive recommendation"}
             </p>
-            <div className="rounded-lg bg-[var(--app-accent-soft)] p-4 text-sm text-[var(--app-muted)]">
-              The lesson workspace (explanation, checks, and coding exercises)
-              will open here once the editor and lesson engine are ready.
-            </div>
+            {nextHasTemplate ? (
+              <StartLessonButton
+                conceptId={next.concept.id}
+                label="Start lesson"
+                size="lg"
+              />
+            ) : (
+              <p className="rounded-lg bg-[var(--app-accent-soft)] p-4 text-sm text-[var(--app-muted)]">
+                An interactive template for this concept is not ready yet.
+                Variables is available as the first runnable lesson.
+              </p>
+            )}
           </>
         ) : (
           <p className="text-sm text-[var(--app-muted)]">
@@ -90,6 +103,7 @@ const StudentLearnPage = async () => {
           {unlocked.map((concept) => {
             const score = masteryMap.get(concept.id) ?? 0
             const isNext = next?.concept.id === concept.id
+            const canStart = hasTemplateLessonForSlug(concept.slug)
             return (
               <li
                 key={concept.id}
@@ -108,9 +122,18 @@ const StudentLearnPage = async () => {
                     {concept.description}
                   </p>
                 </div>
-                <p className="font-mono text-sm text-[var(--app-muted)]">
-                  {score}/100
-                </p>
+                <div className="flex items-center gap-3">
+                  <p className="font-mono text-sm text-[var(--app-muted)]">
+                    {score}/100
+                  </p>
+                  {canStart ? (
+                    <StartLessonButton
+                      conceptId={concept.id}
+                      label="Open"
+                      size="sm"
+                    />
+                  ) : null}
+                </div>
               </li>
             )
           })}

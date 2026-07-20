@@ -4,6 +4,8 @@ import {
   MAX_OUTPUT_CHARS,
   PYODIDE_CDN,
   PYODIDE_MAX_EXECUTION_STEPS,
+  type LessonTestResult,
+  type LessonTestSpec,
   type PyodideWorkerInboundMessage,
   type PyodideWorkerOutboundMessage,
 } from "@/lib/pyodide/protocol"
@@ -62,35 +64,53 @@ const ensurePyodide = () => {
   return pyodidePromise
 }
 
+const beginRequest = (requestId: string) => {
+  activeRequestId = requestId
+  if (interruptBuffer) {
+    interruptBuffer[0] = 0
+  }
+}
+
+const endRequest = (requestId: string) => {
+  if (interruptBuffer) {
+    interruptBuffer[0] = 0
+  }
+  if (activeRequestId === requestId) {
+    activeRequestId = null
+  }
+}
+
+const attachIo = (
+  pyodide: PyodideRuntime,
+  requestId: string,
+  state: { stdout: string; stderr: string }
+) => {
+  pyodide.setStdout({
+    batched: (text) => {
+      state.stdout = appendCapped(state.stdout, text)
+      post({ type: "stdout", requestId, text })
+    },
+  })
+  pyodide.setStderr({
+    batched: (text) => {
+      state.stderr = appendCapped(state.stderr, text)
+      post({ type: "stderr", requestId, text })
+    },
+  })
+}
+
 const runCode = async (
   requestId: string,
   code: string,
   maxSteps = PYODIDE_MAX_EXECUTION_STEPS
 ) => {
-  activeRequestId = requestId
-  if (interruptBuffer) {
-    interruptBuffer[0] = 0
-  }
-
-  let stdout = ""
-  let stderr = ""
+  beginRequest(requestId)
+  const io = { stdout: "", stderr: "" }
   const started = performance.now()
 
   try {
     const pyodide = await ensurePyodide()
-
-    pyodide.setStdout({
-      batched: (text) => {
-        stdout = appendCapped(stdout, text)
-        post({ type: "stdout", requestId, text })
-      },
-    })
-    pyodide.setStderr({
-      batched: (text) => {
-        stderr = appendCapped(stderr, text)
-        post({ type: "stderr", requestId, text })
-      },
-    })
+    attachIo(pyodide, requestId, io)
 
     const guarded = wrapPythonWithExecutionGuard(code, maxSteps)
     await pyodide.runPythonAsync(guarded)
@@ -99,8 +119,8 @@ const runCode = async (
       type: "result",
       requestId,
       ok: true,
-      stdout,
-      stderr,
+      stdout: io.stdout,
+      stderr: io.stderr,
       runtimeMs: Math.round(performance.now() - started),
     })
   } catch (error) {
@@ -109,26 +129,149 @@ const runCode = async (
     const interrupted =
       /KeyboardInterrupt/i.test(message) || interruptBuffer?.[0] === 2
 
-    if (!stderr.includes(message)) {
-      stderr = appendCapped(stderr, `${message}\n`)
+    if (!io.stderr.includes(message)) {
+      io.stderr = appendCapped(io.stderr, `${message}\n`)
     }
 
     post({
       type: "result",
       requestId,
       ok: false,
-      stdout,
-      stderr,
+      stdout: io.stdout,
+      stderr: io.stderr,
       runtimeMs: Math.round(performance.now() - started),
       error: interrupted ? "Execution interrupted." : message,
     })
   } finally {
-    if (interruptBuffer) {
-      interruptBuffer[0] = 0
+    endRequest(requestId)
+  }
+}
+
+const evaluateTests = async (
+  pyodide: PyodideRuntime,
+  stdout: string,
+  tests: LessonTestSpec[]
+): Promise<LessonTestResult[]> => {
+  const results: LessonTestResult[] = []
+
+  for (const test of tests) {
+    if (test.expectsStdoutIncludes) {
+      const passed = stdout.includes(test.expectsStdoutIncludes)
+      results.push({
+        id: test.id,
+        description: test.description,
+        passed,
+        error: passed
+          ? undefined
+          : `Expected stdout to include ${JSON.stringify(test.expectsStdoutIncludes)}.`,
+      })
+      continue
     }
-    if (activeRequestId === requestId) {
-      activeRequestId = null
+
+    try {
+      const pieces = [test.setup?.trim(), test.assertion?.trim()].filter(
+        Boolean
+      )
+      await pyodide.runPythonAsync(pieces.join("\n"))
+      results.push({
+        id: test.id,
+        description: test.description,
+        passed: true,
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Assertion failed."
+      results.push({
+        id: test.id,
+        description: test.description,
+        passed: false,
+        error: message,
+      })
     }
+  }
+
+  return results
+}
+
+const runTests = async (
+  requestId: string,
+  code: string,
+  tests: LessonTestSpec[],
+  maxSteps = PYODIDE_MAX_EXECUTION_STEPS
+) => {
+  beginRequest(requestId)
+  const io = { stdout: "", stderr: "" }
+  const started = performance.now()
+
+  try {
+    const pyodide = await ensurePyodide()
+    attachIo(pyodide, requestId, io)
+
+    try {
+      const guarded = wrapPythonWithExecutionGuard(code, maxSteps)
+      await pyodide.runPythonAsync(guarded)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Python execution failed."
+      const interrupted =
+        /KeyboardInterrupt/i.test(message) || interruptBuffer?.[0] === 2
+
+      if (!io.stderr.includes(message)) {
+        io.stderr = appendCapped(io.stderr, `${message}\n`)
+      }
+
+      const results = tests.map((test) => ({
+        id: test.id,
+        description: test.description,
+        passed: false,
+        error: "Student code did not run successfully.",
+      }))
+
+      post({
+        type: "testsResult",
+        requestId,
+        ok: false,
+        stdout: io.stdout,
+        stderr: io.stderr,
+        runtimeMs: Math.round(performance.now() - started),
+        error: interrupted ? "Execution interrupted." : message,
+        results,
+      })
+      return
+    }
+
+    const results = await evaluateTests(pyodide, io.stdout, tests)
+    const ok = results.every((result) => result.passed)
+
+    post({
+      type: "testsResult",
+      requestId,
+      ok,
+      stdout: io.stdout,
+      stderr: io.stderr,
+      runtimeMs: Math.round(performance.now() - started),
+      results,
+    })
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Test harness failed."
+    post({
+      type: "testsResult",
+      requestId,
+      ok: false,
+      stdout: io.stdout,
+      stderr: io.stderr,
+      runtimeMs: Math.round(performance.now() - started),
+      error: message,
+      results: tests.map((test) => ({
+        id: test.id,
+        description: test.description,
+        passed: false,
+        error: message,
+      })),
+    })
+  } finally {
+    endRequest(requestId)
   }
 }
 
@@ -159,5 +302,15 @@ ctx.onmessage = (event: MessageEvent<PyodideWorkerInboundMessage>) => {
 
   if (message.type === "run") {
     void runCode(message.requestId, message.code, message.maxSteps)
+    return
+  }
+
+  if (message.type === "runTests") {
+    void runTests(
+      message.requestId,
+      message.code,
+      message.tests,
+      message.maxSteps
+    )
   }
 }
