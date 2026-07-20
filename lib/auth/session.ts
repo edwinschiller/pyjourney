@@ -19,6 +19,7 @@ import {
   studentInsightReports,
 } from "@/lib/db"
 import { ensureAcademyMembership } from "@/lib/db/academy"
+import { isOnboardingComplete } from "@/lib/onboarding/parse"
 
 export type UserRole = "student" | "teacher" | "admin"
 
@@ -241,6 +242,14 @@ export const requireRole = async (roles: UserRole[]): Promise<SessionUser> => {
   }
   if (!roles.includes(user.role)) {
     redirect("/")
+  }
+  return user
+}
+
+export const requireStudentWithOnboarding = async (): Promise<SessionUser> => {
+  const user = await requireRole(["student"])
+  if (!isOnboardingComplete(user.onboarding)) {
+    redirect("/onboarding")
   }
   return user
 }

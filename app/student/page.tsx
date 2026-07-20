@@ -1,13 +1,54 @@
+import Link from "next/link"
+
 import { JoinClassroomForm } from "@/components/student/join-classroom-form"
-import { ACADEMY_CLASS_NAME, ACADEMY_JOIN_CODE } from "@/lib/db/constants"
-import { requireRole } from "@/lib/auth/session"
+import { Button } from "@/components/ui/button"
+import { requireStudentWithOnboarding } from "@/lib/auth/session"
 import { listStudentClassrooms } from "@/lib/classrooms/queries"
+import {
+  loadCurriculumGraph,
+  resolveNextConceptForStudent,
+} from "@/lib/curriculum"
+import { ACADEMY_CLASS_NAME, ACADEMY_JOIN_CODE } from "@/lib/db/constants"
+import {
+  getMasteryScoreMapForStudent,
+  listMasteryForStudent,
+  scoreToBand,
+} from "@/lib/mastery"
+import { isOnboardingComplete } from "@/lib/onboarding"
 
 export const dynamic = "force-dynamic"
 
+const bandLabel = (band: string) => {
+  if (band === "mastered") return "Mastered"
+  if (band === "proficient") return "Proficient"
+  if (band === "developing") return "Developing"
+  return "Learning"
+}
+
 const StudentDashboardPage = async () => {
-  const user = await requireRole(["student"])
-  const classrooms = await listStudentClassrooms(user.id)
+  const user = await requireStudentWithOnboarding()
+  const [classrooms, masteryRecords, masteryMap, graph] = await Promise.all([
+    listStudentClassrooms(user.id),
+    listMasteryForStudent(user.id),
+    getMasteryScoreMapForStudent(user.id),
+    loadCurriculumGraph(),
+  ])
+  const next = await resolveNextConceptForStudent(user.id, masteryMap)
+
+  const onboarding = isOnboardingComplete(user.onboarding)
+    ? user.onboarding
+    : null
+
+  const masteryRows = masteryRecords
+    .map((record) => {
+      const concept = graph.conceptById.get(record.conceptId)
+      if (!concept) {
+        return null
+      }
+      return { record, concept }
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((a, b) => a.concept.orderIndex - b.concept.orderIndex)
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
@@ -17,10 +58,96 @@ const StudentDashboardPage = async () => {
         </h1>
         <p className="text-base text-[var(--app-muted)]">
           Welcome{user.displayName ? `, ${user.displayName}` : ""}. You’re in{" "}
-          {ACADEMY_CLASS_NAME} — join a teacher class with a code when you have
-          one.
+          {ACADEMY_CLASS_NAME}
+          {onboarding ? ` · pace: ${onboarding.pace}` : ""}.
         </p>
       </header>
+
+      <section
+        className="app-surface flex flex-col gap-4 rounded-xl p-5 sm:flex-row sm:items-center sm:justify-between"
+        aria-labelledby="next-concept"
+      >
+        <div className="min-w-0">
+          <p
+            id="next-concept"
+            className="text-xs font-medium tracking-wide text-[var(--app-muted)] uppercase"
+          >
+            Next up
+          </p>
+          {next ? (
+            <>
+              <h2 className="mt-1 text-xl font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+                {next.concept.title}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--app-muted)]">
+                {next.concept.description}
+                {next.reason === "assignment_override"
+                  ? " · Assigned by your teacher"
+                  : ""}
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="mt-1 text-xl font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+                Path complete for now
+              </h2>
+              <p className="mt-1 text-sm text-[var(--app-muted)]">
+                You have mastered the unlocked concepts in the current catalog.
+              </p>
+            </>
+          )}
+        </div>
+        {next ? (
+          <Button asChild size="lg">
+            <Link
+              href="/student/learn"
+              aria-label={`Continue learning ${next.concept.title}`}
+            >
+              Continue learning
+            </Link>
+          </Button>
+        ) : (
+          <Button size="lg" disabled aria-label="No next concept available">
+            Continue learning
+          </Button>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3" aria-labelledby="mastery-heading">
+        <h2
+          id="mastery-heading"
+          className="text-lg font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]"
+        >
+          Your mastery
+        </h2>
+        {masteryRows.length === 0 ? (
+          <div className="app-surface rounded-xl p-5 text-sm text-[var(--app-muted)]">
+            No mastery scores yet. Finish onboarding or complete a lesson to get
+            started.
+          </div>
+        ) : (
+          <ul className="app-surface divide-y divide-[var(--app-border)] rounded-xl">
+            {masteryRows.map(({ record, concept }) => (
+              <li
+                key={record.id}
+                className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+              >
+                <div>
+                  <p className="font-medium text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+                    {concept.title}
+                  </p>
+                  <p className="text-sm text-[var(--app-muted)]">
+                    {bandLabel(scoreToBand(record.score))}
+                  </p>
+                </div>
+                <p className="font-mono text-sm font-semibold text-[var(--brand-blue)]">
+                  {record.score}/100
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <JoinClassroomForm />
 
@@ -46,10 +173,7 @@ const StudentDashboardPage = async () => {
                 "Teacher"
 
               return (
-                <li
-                  key={classroom.id}
-                  className="app-surface rounded-xl p-4"
-                >
+                <li key={classroom.id} className="app-surface rounded-xl p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
