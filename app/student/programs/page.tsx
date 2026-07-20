@@ -1,9 +1,6 @@
 import Link from "next/link"
 
-import {
-  ProgramsList,
-  toProgramListItem,
-} from "@/components/programs/programs-list"
+import { ProgramsList } from "@/components/programs/programs-list"
 import { Button } from "@/components/ui/button"
 import { requireStudentWithOnboarding } from "@/lib/auth/session"
 import { listIdeProgramsForStudent } from "@/lib/programs"
@@ -13,6 +10,16 @@ export const dynamic = "force-dynamic"
 const StudentProgramsPage = async () => {
   const user = await requireStudentWithOnboarding()
   const programs = await listIdeProgramsForStudent(user.id)
+
+  const programItems = programs.map((program) => ({
+    id: program.id,
+    title: program.title,
+    code: program.code,
+    updatedLabel: new Intl.DateTimeFormat("en", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(program.updatedAt),
+  }))
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
@@ -32,7 +39,7 @@ const StudentProgramsPage = async () => {
         </Button>
       </header>
 
-      <ProgramsList programs={programs.map(toProgramListItem)} />
+      <ProgramsList programs={programItems} />
     </div>
   )
 }

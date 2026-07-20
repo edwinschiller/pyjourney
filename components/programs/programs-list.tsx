@@ -11,7 +11,6 @@ import {
   downloadTextFile,
   slugifyFilename,
   type ProgramActionState,
-  type SavedProgramRecord,
 } from "@/lib/programs"
 
 type ProgramsListProps = {
@@ -139,13 +138,3 @@ export const ProgramsList = ({ programs }: ProgramsListProps) => {
     </ul>
   )
 }
-
-export const toProgramListItem = (program: SavedProgramRecord) => ({
-  id: program.id,
-  title: program.title,
-  code: program.code,
-  updatedLabel: new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(program.updatedAt),
-})

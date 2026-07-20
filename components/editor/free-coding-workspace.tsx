@@ -15,13 +15,7 @@ import {
   type ProgramActionState,
 } from "@/lib/programs"
 
-const DEFAULT_CODE = `# Free practice in PyJourney
-name = "PyJourney"
-print(f"Hello from {name}!")
-
-total = sum(range(1, 6))
-print("1+2+3+4+5 =", total)
-`
+const DEFAULT_CODE = `print("Hello, World!")`
 
 type FreeCodingWorkspaceProps = {
   initialProgramId?: string | null
