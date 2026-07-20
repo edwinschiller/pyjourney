@@ -1,10 +1,10 @@
 export {
-  lessonComprehensionCheckSchema,
-  lessonContentSchema,
+  lessonBlockSchema,
+  lessonSessionSchema,
   lessonTestSchema,
-  parseLessonContent,
-  safeParseLessonContent,
-  type LessonComprehensionCheck,
-  type LessonContent,
+  parseLessonSession,
+  safeParseLessonSession,
+  type LessonBlock,
+  type LessonSession,
   type LessonTest,
-} from "@/lib/ai/schemas/lesson"
+} from "@/lib/ai/schemas/lesson-blocks"

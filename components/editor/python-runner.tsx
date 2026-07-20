@@ -172,7 +172,7 @@ export const PythonRunner = ({
     <div
       className={cn(
         fillHeight
-          ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]"
+          ? "flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]"
           : "app-surface overflow-hidden rounded-2xl",
         className
       )}
@@ -250,7 +250,7 @@ export const PythonRunner = ({
             onChange={onCodeChange}
             className={
               fillHeight
-                ? "min-h-0 rounded-none border-0"
+                ? "min-h-[240px] rounded-none border-0"
                 : "min-h-[280px] rounded-none border-0"
             }
           />

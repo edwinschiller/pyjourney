@@ -1,13 +1,12 @@
-export { startLessonForConceptAction, completeLessonAction } from "./actions"
+export {
+  startLessonForConceptAction,
+  syncLessonProgressAction,
+} from "./actions"
 export { getLessonForStudent } from "./queries"
+export { buildLearningPath } from "./path"
 export {
-  getTemplateLessonForSlug,
-  hasTemplateLessonForSlug,
-  VARIABLES_LESSON_TEMPLATE,
-} from "./templates"
-export {
-  parseLessonContent,
-  safeParseLessonContent,
-  type LessonContent,
-  type LessonTest,
+  parseLessonSession,
+  type LessonBlock,
+  type LessonSession,
 } from "./schema"
+export { runPyjoNext, hasPyjoLessonForSlug } from "@/lib/pyjo/director"

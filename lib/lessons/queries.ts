@@ -1,11 +1,11 @@
-import { and, eq } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 
+import {
+  parseLessonSession,
+  type LessonSession,
+} from "@/lib/ai/schemas/lesson-blocks"
 import { getDb } from "@/lib/db"
 import { concepts, lessons } from "@/lib/db/schema"
-import {
-  parseLessonContent,
-  type LessonContent,
-} from "@/lib/lessons/schema"
 
 export type LessonRecord = {
   id: string
@@ -14,7 +14,7 @@ export type LessonRecord = {
   conceptSlug: string
   conceptTitle: string
   status: "active" | "completed" | "abandoned"
-  content: LessonContent
+  content: LessonSession
   createdAt: Date
   updatedAt: Date
 }
@@ -42,19 +42,100 @@ export const getLessonForStudent = async (
     .limit(1)
 
   const row = rows[0]
-  if (!row) {
+  if (!row) return null
+
+  try {
+    return {
+      id: row.id,
+      studentId: row.studentId,
+      conceptId: row.conceptId,
+      conceptSlug: row.conceptSlug,
+      conceptTitle: row.conceptTitle,
+      status: row.status,
+      content: parseLessonSession(row.content),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }
+  } catch {
     return null
   }
+}
 
-  return {
-    id: row.id,
-    studentId: row.studentId,
-    conceptId: row.conceptId,
-    conceptSlug: row.conceptSlug,
-    conceptTitle: row.conceptTitle,
-    status: row.status,
-    content: parseLessonContent(row.content),
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+export const listActiveLessonsByConcept = async (studentId: string) => {
+  const db = getDb()
+  const rows = await db
+    .select({
+      id: lessons.id,
+      conceptId: lessons.conceptId,
+      content: lessons.content,
+    })
+    .from(lessons)
+    .where(and(eq(lessons.studentId, studentId), eq(lessons.status, "active")))
+    .orderBy(desc(lessons.createdAt))
+
+  const map = new Map<string, string>()
+  for (const row of rows) {
+    if (map.has(row.conceptId)) continue
+    try {
+      parseLessonSession(row.content)
+      map.set(row.conceptId, row.id)
+    } catch {
+      // skip legacy
+    }
   }
+  return map
+}
+
+export const listCompletedConceptIds = async (studentId: string) => {
+  const db = getDb()
+  const rows = await db
+    .select({ conceptId: lessons.conceptId })
+    .from(lessons)
+    .where(
+      and(eq(lessons.studentId, studentId), eq(lessons.status, "completed"))
+    )
+  return new Set(rows.map((row) => row.conceptId))
+}
+
+export const updateLessonContent = async (
+  lessonId: string,
+  studentId: string,
+  content: LessonSession,
+  status?: "active" | "completed" | "abandoned"
+) => {
+  const db = getDb()
+  const updated = await db
+    .update(lessons)
+    .set({
+      content,
+      updatedAt: new Date(),
+      schemaVersion: 3,
+      ...(status ? { status } : {}),
+    })
+    .where(and(eq(lessons.id, lessonId), eq(lessons.studentId, studentId)))
+    .returning({ id: lessons.id })
+  return Boolean(updated[0])
+}
+
+export const abandonActiveLessonsForConcept = async (
+  studentId: string,
+  conceptId: string
+) => {
+  const db = getDb()
+  const active = await db
+    .select({ id: lessons.id })
+    .from(lessons)
+    .where(
+      and(
+        eq(lessons.studentId, studentId),
+        eq(lessons.conceptId, conceptId),
+        eq(lessons.status, "active")
+      )
+    )
+  const ids = active.map((row) => row.id)
+  if (ids.length === 0) return
+  await db
+    .update(lessons)
+    .set({ status: "abandoned", updatedAt: new Date() })
+    .where(inArray(lessons.id, ids))
 }

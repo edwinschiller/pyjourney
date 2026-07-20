@@ -3,11 +3,24 @@
 import { and, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import {
+  lessonEventSchema,
+  type LessonEvent,
+  type LessonSession,
+} from "@/lib/ai/schemas/lesson-blocks"
 import { requireRole } from "@/lib/auth/session"
 import { getDb } from "@/lib/db"
 import { concepts, lessons } from "@/lib/db/schema"
-import { parseLessonContent } from "@/lib/lessons/schema"
-import { getTemplateLessonForSlug } from "@/lib/lessons/templates"
+import {
+  abandonActiveLessonsForConcept,
+  getLessonForStudent,
+  updateLessonContent,
+} from "@/lib/lessons/queries"
+import { applyMasteryEvent } from "@/lib/mastery"
+import {
+  createInitialSessionForSlug,
+  runPyjoNext,
+} from "@/lib/pyjo/director"
 
 export type StartLessonState = {
   ok: boolean
@@ -16,14 +29,26 @@ export type StartLessonState = {
   lessonId?: string
 } | null
 
+export type SyncLessonState = {
+  ok: boolean
+  error?: string
+  session?: LessonSession
+  coachSpeak?: string
+  completed?: boolean
+  source?: "openai" | "rules"
+} | null
+
+const revalidateLesson = (lessonId: string) => {
+  revalidatePath("/student/learn")
+  revalidatePath(`/student/learn/${lessonId}`)
+}
+
 export const startLessonForConceptAction = async (
   conceptId: string
 ): Promise<StartLessonState> => {
   const user = await requireRole(["student"])
   const trimmedId = conceptId.trim()
-  if (!trimmedId) {
-    return { ok: false, error: "Concept is required." }
-  }
+  if (!trimmedId) return { ok: false, error: "Concept is required." }
 
   try {
     const db = getDb()
@@ -38,20 +63,18 @@ export const startLessonForConceptAction = async (
       .limit(1)
 
     const concept = conceptRows[0]
-    if (!concept) {
-      return { ok: false, error: "Concept not found." }
-    }
+    if (!concept) return { ok: false, error: "Concept not found." }
 
-    const template = getTemplateLessonForSlug(concept.slug)
-    if (!template) {
+    const seed = createInitialSessionForSlug(concept.slug)
+    if (!seed) {
       return {
         ok: false,
-        error: `No lesson template yet for “${concept.title}”. Try Variables for now.`,
+        error: `PyJo is not ready for “${concept.title}” yet. Try Variables.`,
       }
     }
 
     const existing = await db
-      .select({ id: lessons.id })
+      .select({ id: lessons.id, content: lessons.content })
       .from(lessons)
       .where(
         and(
@@ -64,33 +87,42 @@ export const startLessonForConceptAction = async (
       .limit(1)
 
     if (existing[0]) {
-      return {
-        ok: true,
-        lessonId: existing[0].id,
-        redirectTo: `/student/learn/${existing[0].id}`,
+      try {
+        const { parseLessonSession } = await import(
+          "@/lib/ai/schemas/lesson-blocks"
+        )
+        parseLessonSession(existing[0].content)
+        return {
+          ok: true,
+          lessonId: existing[0].id,
+          redirectTo: `/student/learn/${existing[0].id}`,
+        }
+      } catch {
+        await abandonActiveLessonsForConcept(user.id, concept.id)
       }
     }
 
-    const content = parseLessonContent(template)
+    // Bootstrap first PyJo blocks before insert
+    const bootstrapped = await runPyjoNext({
+      session: seed,
+      bootstrap: true,
+    })
+
     const inserted = await db
       .insert(lessons)
       .values({
         studentId: user.id,
         conceptId: concept.id,
-        schemaVersion: 1,
-        content,
+        schemaVersion: 3,
+        content: bootstrapped.session,
         status: "active",
       })
       .returning({ id: lessons.id })
 
     const lessonId = inserted[0]?.id
-    if (!lessonId) {
-      return { ok: false, error: "Could not create lesson." }
-    }
+    if (!lessonId) return { ok: false, error: "Could not create lesson." }
 
-    revalidatePath("/student/learn")
-    revalidatePath(`/student/learn/${lessonId}`)
-
+    revalidateLesson(lessonId)
     return {
       ok: true,
       lessonId,
@@ -102,38 +134,111 @@ export const startLessonForConceptAction = async (
   }
 }
 
-export const completeLessonAction = async (
+type SyncInput = {
   lessonId: string
-): Promise<{ ok: boolean; error?: string }> => {
+  cursor?: number
+  event?: LessonEvent
+  requestNext?: boolean
+  completeLesson?: boolean
+}
+
+export const syncLessonProgressAction = async (
+  input: SyncInput
+): Promise<SyncLessonState> => {
   const user = await requireRole(["student"])
-  const trimmedId = lessonId.trim()
-  if (!trimmedId) {
-    return { ok: false, error: "Lesson is required." }
-  }
+  const lessonId = input.lessonId.trim()
+  if (!lessonId) return { ok: false, error: "Lesson is required." }
 
   try {
-    const db = getDb()
-    const updated = await db
-      .update(lessons)
-      .set({ status: "completed", updatedAt: new Date() })
-      .where(
-        and(
-          eq(lessons.id, trimmedId),
-          eq(lessons.studentId, user.id),
-          eq(lessons.status, "active")
-        )
-      )
-      .returning({ id: lessons.id })
-
-    if (!updated[0]) {
-      return { ok: false, error: "Lesson not found or already completed." }
+    const lesson = await getLessonForStudent(lessonId, user.id)
+    if (!lesson) return { ok: false, error: "Lesson not found." }
+    if (lesson.status !== "active") {
+      return {
+        ok: true,
+        session: lesson.content,
+        completed: lesson.status === "completed",
+      }
     }
 
-    revalidatePath(`/student/learn/${trimmedId}`)
-    revalidatePath("/student/learn")
-    return { ok: true }
+    let session = lesson.content
+    if (typeof input.cursor === "number") {
+      session = {
+        ...session,
+        cursor: Math.max(
+          0,
+          Math.min(input.cursor, Math.max(session.blocks.length - 1, 0))
+        ),
+      }
+    }
+
+    let coachSpeak = session.lastCoachSpeak
+    let source: "openai" | "rules" | undefined
+
+    const event = input.event
+      ? lessonEventSchema.parse(input.event)
+      : undefined
+
+    const atEnd =
+      session.cursor >= Math.max(session.blocks.length - 1, 0)
+    const needsNext =
+      Boolean(input.requestNext) ||
+      Boolean(event && !event.passed) ||
+      Boolean(event?.passed && event.kind === "coding") ||
+      Boolean(
+        event?.passed &&
+          atEnd &&
+          session.blocks[session.cursor]?.kind !== "complete"
+      )
+
+    if (needsNext) {
+      const result = await runPyjoNext({
+        session,
+        event,
+        bootstrap: false,
+      })
+      session = result.session
+      coachSpeak = result.output.speak
+      source = result.source
+    } else if (event) {
+      const { updateLearnerState } = await import("@/lib/pyjo/policy")
+      session = {
+        ...session,
+        events: [...session.events, event],
+        learner: updateLearnerState(session.learner, event),
+        codingPassed:
+          event.kind === "coding" && event.passed
+            ? true
+            : session.codingPassed,
+      }
+    }
+
+    let completed = false
+    if (
+      input.completeLesson ||
+      session.blocks[session.cursor]?.kind === "complete"
+    ) {
+      // Only complete when explicitly finishing complete step
+      if (input.completeLesson) {
+        await updateLessonContent(lessonId, user.id, session, "completed")
+        await applyMasteryEvent(user.id, lesson.conceptId, {
+          type: "test_pass",
+          strength:
+            session.learner.pace === "fast" && session.learner.confidence > 0.7
+              ? "strong"
+              : "normal",
+        })
+        completed = true
+      } else {
+        await updateLessonContent(lessonId, user.id, session)
+      }
+    } else {
+      await updateLessonContent(lessonId, user.id, session)
+    }
+
+    revalidateLesson(lessonId)
+    return { ok: true, session, coachSpeak, completed, source }
   } catch (error) {
-    console.error("completeLessonAction", error)
-    return { ok: false, error: "Could not complete lesson." }
+    console.error("syncLessonProgressAction", error)
+    return { ok: false, error: "Could not sync lesson." }
   }
 }

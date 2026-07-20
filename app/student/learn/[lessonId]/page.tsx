@@ -1,9 +1,13 @@
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { redirect } from "next/navigation"
+import { and, eq } from "drizzle-orm"
 
-import { LessonWorkspace } from "@/components/lessons/lesson-workspace"
+import { LessonPlayer } from "@/components/lessons/player/lesson-player"
 import { Button } from "@/components/ui/button"
 import { requireStudentWithOnboarding } from "@/lib/auth/session"
+import { getDb } from "@/lib/db"
+import { lessons } from "@/lib/db/schema"
+import { startLessonForConceptAction } from "@/lib/lessons/actions"
 import { getLessonForStudent } from "@/lib/lessons/queries"
 
 export const dynamic = "force-dynamic"
@@ -17,25 +21,44 @@ const StudentLessonPage = async ({ params }: LessonPageProps) => {
   const { lessonId } = await params
   const lesson = await getLessonForStudent(lessonId, user.id)
 
-  if (!lesson) {
-    notFound()
+  if (lesson) {
+    return (
+      <div className="flex h-full min-h-0 flex-1 flex-col p-4 md:p-6">
+        <LessonPlayer
+          lessonId={lesson.id}
+          conceptTitle={lesson.conceptTitle}
+          initialSession={lesson.content}
+          status={lesson.status}
+        />
+      </div>
+    )
+  }
+
+  const db = getDb()
+  const orphan = await db
+    .select({ conceptId: lessons.conceptId })
+    .from(lessons)
+    .where(and(eq(lessons.id, lessonId), eq(lessons.studentId, user.id)))
+    .limit(1)
+
+  if (orphan[0]?.conceptId) {
+    const started = await startLessonForConceptAction(orphan[0].conceptId)
+    if (started?.ok && started.redirectTo) {
+      redirect(started.redirectTo)
+    }
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-3 md:px-6">
-      <div className="shrink-0">
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/student/learn" aria-label="Back to Learn hub">
-            ← Learn
-          </Link>
-        </Button>
-      </div>
-      <LessonWorkspace
-        lessonId={lesson.id}
-        conceptTitle={lesson.conceptTitle}
-        status={lesson.status}
-        content={lesson.content}
-      />
+    <div className="mx-auto flex max-w-md flex-col gap-4 px-4 py-16 text-center">
+      <h1 className="text-xl font-bold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+        Lesson not found
+      </h1>
+      <p className="text-sm text-[var(--app-muted)]">
+        Open Variables again from your path — PyJo will start a fresh session.
+      </p>
+      <Button asChild>
+        <Link href="/student/learn">Back to path</Link>
+      </Button>
     </div>
   )
 }
