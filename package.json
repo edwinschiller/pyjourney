@@ -13,12 +13,14 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@neondatabase/auth": "^0.4.2-beta",
     "@neondatabase/serverless": "^1.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.25.0",
+    "monaco-editor": "^0.56.0",
     "next": "16.2.10",
     "radix-ui": "^1.6.2",
     "react": "19.2.4",

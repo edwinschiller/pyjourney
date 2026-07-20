@@ -1,11 +1,18 @@
-import { PlaceholderPage } from "@/components/layout/placeholder-page"
+import { PythonWorkspace } from "@/components/editor/python-workspace"
+import { requireStudentWithOnboarding } from "@/lib/auth/session"
 
-const StudentCodePage = () => {
+export const dynamic = "force-dynamic"
+
+const StudentCodePage = async () => {
+  await requireStudentWithOnboarding()
+
   return (
-    <PlaceholderPage
-      title="Free coding"
-      description="Monaco + Pyodide workspace for open practice will land here."
-    />
+    <div className="flex h-full min-h-0 flex-1 flex-col p-4 md:p-6">
+      <PythonWorkspace
+        title="Free coding"
+        description="Practice Python in the browser. Runtime runs in a Web Worker so the UI stays responsive."
+      />
+    </div>
   )
 }
 

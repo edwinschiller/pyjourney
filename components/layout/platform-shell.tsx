@@ -52,7 +52,7 @@ export const PlatformShell = ({ user, children }: PlatformShellProps) => {
   const pathname = usePathname()
   const isFullHeight =
     pathname.startsWith("/student/code") ||
-    pathname.startsWith("/student/learn/")
+    pathname.startsWith("/student/learn")
 
   const { width: sidebarWidth, resizeHandleProps } = useHorizontalPanelResize({
     storageKey: "platform-sidebar-width",
