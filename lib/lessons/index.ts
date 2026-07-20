@@ -1,13 +1,20 @@
-export { startLessonForConceptAction, completeLessonAction } from "./actions"
+export {
+  startLessonForConceptAction,
+  syncLessonProgressAction,
+  completeLessonAction,
+} from "./actions"
 export { getLessonForStudent } from "./queries"
 export {
-  getTemplateLessonForSlug,
+  getTemplateSessionForSlug,
   hasTemplateLessonForSlug,
-  VARIABLES_LESSON_TEMPLATE,
-} from "./templates"
+  buildVariablesLessonSession,
+} from "./templates/variables"
 export {
-  parseLessonContent,
-  safeParseLessonContent,
-  type LessonContent,
+  parseLessonSession,
+  safeParseLessonSession,
+  type LessonBlock,
+  type LessonSession,
   type LessonTest,
 } from "./schema"
+export { buildLearningPath } from "./path"
+export { adaptLessonWithRules } from "./adapt/rules"
