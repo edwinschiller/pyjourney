@@ -12,7 +12,7 @@ import {
   type LessonEvent,
   type LessonSession,
 } from "@/lib/ai/schemas/lesson-blocks"
-import { adaptLessonWithRules } from "@/lib/lessons/adapt/rules"
+import { runLessonDirector } from "@/lib/lessons/adapt/director"
 import type { AdaptTrigger } from "@/lib/lessons/adapt/rules"
 import {
   abandonActiveLessonsForConcept,
@@ -183,7 +183,7 @@ export const syncLessonProgressAction = async (
 
     let adaptMessage: string | null = null
     if (input.adaptTrigger && session.adaptive) {
-      const adapted = adaptLessonWithRules({
+      const adapted = await runLessonDirector({
         session,
         trigger: input.adaptTrigger,
         blockId:
