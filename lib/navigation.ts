@@ -30,6 +30,7 @@ export const TEACHER_NAV: NavLink[] = [
   { href: "/teacher", label: "Dashboard", icon: LayoutDashboard },
   { href: "/teacher/classes", label: "Classes", icon: Users },
   { href: "/teacher/assignments", label: "Assignments", icon: ClipboardList },
+  { href: "/teacher/insights", label: "Insights", icon: BarChart3 },
 ]
 
 export const ADMIN_NAV: NavLink[] = [

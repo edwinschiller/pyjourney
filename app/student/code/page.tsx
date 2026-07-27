@@ -1,5 +1,5 @@
 import { FreeCodingWorkspace } from "@/components/editor/free-coding-workspace"
-import { requireStudentWithOnboarding } from "@/lib/auth/session"
+import { requireRole } from "@/lib/auth/session"
 import { getProgramForStudent } from "@/lib/programs"
 
 export const dynamic = "force-dynamic"
@@ -9,7 +9,7 @@ type StudentCodePageProps = {
 }
 
 const StudentCodePage = async ({ searchParams }: StudentCodePageProps) => {
-  const user = await requireStudentWithOnboarding()
+  const user = await requireRole(["student"])
   const params = await searchParams
   const programId = params.program?.trim() || null
 

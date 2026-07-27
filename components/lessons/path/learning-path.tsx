@@ -4,23 +4,30 @@ import { Check, Lock, Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 
-import { Button } from "@/components/ui/button"
+import { LessonCta } from "@/components/lessons/player/lesson-cta"
 import { startLessonForConceptAction } from "@/lib/lessons/actions"
 import type { LearningPathNode } from "@/lib/lessons/path"
 import { cn } from "@/lib/utils"
-
-const PATH_ALIGN: Array<"left" | "center" | "right"> = [
-  "center",
-  "right",
-  "center",
-  "left",
-  "center",
-]
 
 type LearningPathProps = {
   nodes: LearningPathNode[]
   completedCount: number
   totalCount: number
+}
+
+const statusLabel = (node: LearningPathNode) => {
+  switch (node.status) {
+    case "locked":
+      return "Locked"
+    case "soon":
+      return "Coming soon"
+    case "completed":
+      return `${node.masteryScore}/100`
+    case "active":
+      return "Up next"
+    default:
+      return "Available"
+  }
 }
 
 export const LearningPath = ({
@@ -37,7 +44,11 @@ export const LearningPath = ({
     totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100)
 
   const handleOpen = (node: LearningPathNode) => {
-    if (node.status === "locked" || node.status === "soon" || !node.hasTemplate) {
+    if (
+      node.status === "locked" ||
+      node.status === "soon" ||
+      !node.hasTemplate
+    ) {
       return
     }
     setError(null)
@@ -54,28 +65,30 @@ export const LearningPath = ({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-8">
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
       <header className="flex flex-col gap-3">
         <div>
           <p className="text-xs font-medium tracking-wide text-[var(--app-muted)] uppercase">
             Learning path
           </p>
           <h1 className="mt-1 text-2xl font-bold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
-            Python with PyJo
+            Python with PyJourney
           </h1>
           <p className="mt-1 text-sm text-[var(--app-muted)]">
-            PyJo watches your pace and answers, then builds the next step.
+            Finish a concept to unlock what depends on it. Some lessons open in
+            parallel once their prerequisites are done.
           </p>
         </div>
-        <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3">
-          <div className="mb-2 flex justify-between text-xs font-medium text-[var(--app-muted)]">
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between text-xs text-[var(--app-muted)]">
             <span>Progress</span>
-            <span>
+            <span className="tabular-nums">
               {completedCount}/{totalCount} · {percent}%
             </span>
           </div>
           <div
-            className="h-2 overflow-hidden rounded-full bg-[var(--app-border)]"
+            className="h-1.5 overflow-hidden rounded-full bg-[var(--app-border)]"
             role="progressbar"
             aria-valuenow={percent}
             aria-valuemin={0}
@@ -83,7 +96,7 @@ export const LearningPath = ({
             aria-label="Path progress"
           >
             <div
-              className="h-full rounded-full bg-[var(--brand-blue)] transition-[width] duration-500"
+              className="lesson-confidence-fill h-full rounded-full bg-[var(--brand-blue)]"
               style={{ width: `${percent}%` }}
             />
           </div>
@@ -96,108 +109,122 @@ export const LearningPath = ({
         </p>
       ) : null}
 
-      <div className="relative mx-auto w-full max-w-md pb-8">
-        <div
-          className="pointer-events-none absolute top-8 bottom-8 left-1/2 w-1 -translate-x-1/2 rounded-full bg-[var(--app-border)]"
-          aria-hidden
-        />
-        <ul className="relative flex flex-col gap-7">
-          {nodes.map((node, index) => {
-            const align = PATH_ALIGN[index % PATH_ALIGN.length]
-            const isBusy = pending && pendingId === node.conceptId
-            const canOpen =
-              node.status === "active" ||
-              node.status === "available" ||
-              node.status === "completed"
+      <ol className="relative m-0 flex list-none flex-col p-0">
+        {nodes.map((node, index) => {
+          const isBusy = pending && pendingId === node.conceptId
+          const canOpen =
+            node.status === "active" ||
+            node.status === "available" ||
+            node.status === "completed"
+          const isLast = index === nodes.length - 1
+          const ctaLabel = node.status === "completed" ? "Review" : "Continue"
 
-            return (
-              <li
-                key={node.conceptId}
+          return (
+            <li key={node.conceptId} className="relative flex gap-4">
+              <div className="flex w-10 shrink-0 flex-col items-center">
+                <button
+                  type="button"
+                  tabIndex={canOpen ? 0 : -1}
+                  disabled={!canOpen || isBusy}
+                  aria-label={
+                    node.status === "locked"
+                      ? `${node.title}, locked`
+                      : node.status === "soon"
+                        ? `${node.title}, coming soon`
+                        : `Open ${node.title}`
+                  }
+                  onClick={() => handleOpen(node)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault()
+                      handleOpen(node)
+                    }
+                  }}
+                  className={cn(
+                    "relative z-10 flex size-10 items-center justify-center rounded-full border-2 transition-colors",
+                    "focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] focus-visible:outline-none",
+                    node.status === "active" &&
+                      "border-[var(--brand-blue)] bg-[var(--brand-blue)] text-white",
+                    node.status === "available" &&
+                      "border-[var(--brand-blue)] bg-[var(--app-surface)] text-[var(--brand-blue)]",
+                    node.status === "completed" &&
+                      "border-emerald-600 bg-emerald-600 text-white",
+                    node.status === "locked" &&
+                      "cursor-not-allowed border-[var(--app-border)] bg-[var(--app-bg)] text-[var(--app-muted)]",
+                    node.status === "soon" &&
+                      "cursor-not-allowed border-dashed border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)]"
+                  )}
+                >
+                  {node.status === "completed" ? (
+                    <Check className="size-4 stroke-[2.5]" aria-hidden />
+                  ) : node.status === "locked" ? (
+                    <Lock className="size-3.5" aria-hidden />
+                  ) : node.status === "soon" ? (
+                    <Sparkles className="size-3.5" aria-hidden />
+                  ) : (
+                    <span className="text-sm font-semibold">{index + 1}</span>
+                  )}
+                </button>
+                {!isLast ? (
+                  <div
+                    className={cn(
+                      "w-px flex-1 min-h-6",
+                      node.status === "completed"
+                        ? "bg-emerald-600/40"
+                        : "bg-[var(--app-border)]"
+                    )}
+                    aria-hidden
+                  />
+                ) : null}
+              </div>
+
+              <div
                 className={cn(
-                  "relative flex px-4",
-                  align === "left" && "justify-start",
-                  align === "right" && "justify-end",
-                  align === "center" && "justify-center"
+                  "flex min-w-0 flex-1 items-start justify-between gap-3 pb-6",
+                  isLast && "pb-0"
                 )}
               >
-                <div className="flex max-w-[220px] flex-col items-center gap-2">
-                  <button
-                    type="button"
-                    tabIndex={canOpen ? 0 : -1}
-                    disabled={!canOpen || isBusy}
-                    aria-label={
-                      node.status === "locked"
-                        ? `${node.title}, locked`
-                        : node.status === "soon"
-                          ? `${node.title}, coming soon`
-                          : `Open ${node.title} with PyJo`
-                    }
-                    onClick={() => handleOpen(node)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault()
-                        handleOpen(node)
-                      }
-                    }}
+                <div className="min-w-0 pt-1.5">
+                  <p
                     className={cn(
-                      "flex size-16 items-center justify-center rounded-2xl border-2 transition-transform duration-200",
-                      "focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] focus-visible:outline-none",
-                      canOpen && "hover:scale-[1.03] active:scale-[0.98]",
-                      node.status === "locked" &&
-                        "cursor-not-allowed border-[var(--app-border)] bg-[var(--app-bg)] text-[var(--app-muted)] opacity-70",
-                      node.status === "soon" &&
-                        "cursor-not-allowed border-dashed border-[var(--app-border)] text-[var(--app-muted)]",
-                      node.status === "completed" &&
-                        "border-[var(--brand-blue)] bg-[var(--app-accent-soft)] text-[var(--brand-blue)]",
-                      node.status === "active" &&
-                        "border-[var(--brand-blue)] bg-[var(--brand-blue)] text-white shadow-[0_8px_24px_-12px_rgba(37,90,135,0.7)]",
-                      node.status === "available" &&
-                        "border-[var(--brand-blue)]/50 bg-[var(--app-surface)] text-[var(--brand-blue)]"
+                      "text-sm font-semibold",
+                      node.status === "locked" || node.status === "soon"
+                        ? "text-[var(--app-muted)]"
+                        : "text-[var(--brand-navy)] dark:text-[var(--app-fg)]"
                     )}
                   >
-                    {node.status === "completed" ? (
-                      <Check className="size-7 stroke-[2.5]" aria-hidden />
-                    ) : node.status === "locked" ? (
-                      <Lock className="size-5" aria-hidden />
-                    ) : node.status === "soon" ? (
-                      <Sparkles className="size-5" aria-hidden />
-                    ) : (
-                      <span className="text-lg font-bold">{index + 1}</span>
-                    )}
-                  </button>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
-                      {node.title}
-                    </p>
-                    <p className="mt-0.5 text-xs text-[var(--app-muted)]">
-                      {node.status === "locked"
-                        ? "Locked"
-                        : node.status === "soon"
-                          ? "Coming soon"
-                          : node.status === "completed"
-                            ? `${node.masteryScore}/100`
-                            : node.status === "active"
-                              ? "Up next · PyJo"
-                              : "Available"}
-                    </p>
-                  </div>
-                  {node.status === "active" ? (
-                    <Button
-                      size="sm"
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => handleOpen(node)}
-                      aria-label={`Continue ${node.title}`}
-                    >
-                      {isBusy ? "Opening…" : "Continue"}
-                    </Button>
-                  ) : null}
+                    {node.title}
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--app-muted)]">
+                    {statusLabel(node)}
+                    {node.description ? (
+                      <span className="mt-1 block leading-snug opacity-80">
+                        {node.description}
+                      </span>
+                    ) : null}
+                  </p>
                 </div>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
+
+                {canOpen ? (
+                  <LessonCta
+                    tone={node.status === "active" ? "primary" : "ghost"}
+                    className="!min-h-8 !min-w-[6.5rem] shrink-0 !px-3 !text-xs"
+                    loading={isBusy}
+                    onClick={() => handleOpen(node)}
+                    aria-label={
+                      isBusy
+                        ? `Opening ${node.title}`
+                        : `${ctaLabel} ${node.title}`
+                    }
+                  >
+                    {ctaLabel}
+                  </LessonCta>
+                ) : null}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }

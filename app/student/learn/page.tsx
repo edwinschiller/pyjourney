@@ -1,5 +1,5 @@
 import { LearningPath } from "@/components/lessons/path/learning-path"
-import { requireStudentWithOnboarding } from "@/lib/auth/session"
+import { requireRole } from "@/lib/auth/session"
 import { resolveNextConceptForStudent } from "@/lib/curriculum"
 import { buildLearningPath } from "@/lib/lessons/path"
 import {
@@ -11,13 +11,15 @@ import { getMasteryScoreMapForStudent } from "@/lib/mastery"
 export const dynamic = "force-dynamic"
 
 const StudentLearnPage = async () => {
-  const user = await requireStudentWithOnboarding()
+  const user = await requireRole(["student"])
   const masteryMap = await getMasteryScoreMapForStudent(user.id)
-  const next = await resolveNextConceptForStudent(user.id, masteryMap)
   const [activeByConcept, completedIds] = await Promise.all([
     listActiveLessonsByConcept(user.id),
     listCompletedConceptIds(user.id),
   ])
+  const next = await resolveNextConceptForStudent(user.id, masteryMap, {
+    completedConceptIds: completedIds,
+  })
 
   const path = await buildLearningPath({
     masteryByConceptId: masteryMap,

@@ -44,6 +44,13 @@ const TeacherClassroomDetailPage = async ({
         <p className="text-base text-[var(--app-muted)]">
           Manage the join code and students in this class.
         </p>
+        <Link
+          href={`/teacher/classes/${classroom.id}/insights`}
+          className="w-fit text-sm font-medium text-[var(--brand-blue)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)]"
+          aria-label={`View insights for ${classroom.name}`}
+        >
+          View class insights →
+        </Link>
       </header>
 
       <ClassroomSettingsPanel

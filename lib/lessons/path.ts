@@ -37,7 +37,8 @@ export const buildLearningPath = async (input: {
     const unlocked = isConceptUnlocked(
       graph,
       concept.id,
-      input.masteryByConceptId
+      input.masteryByConceptId,
+      input.completedConceptIds
     )
     const hasTemplate = hasPyjoLessonForSlug(concept.slug)
     const completed =

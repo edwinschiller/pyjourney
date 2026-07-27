@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useActionState, useState, useTransition } from "react"
 
-import { IdePyjoTip } from "@/components/editor/ide-pyjo-tip"
 import { PythonRunner } from "@/components/editor/python-runner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -89,8 +88,6 @@ export const FreeCodingWorkspace = ({
           Write, run, save, and download programs. Runtime runs in a Web Worker.
         </p>
       </header>
-
-      <IdePyjoTip code={code} />
 
       <PythonRunner
         fillHeight

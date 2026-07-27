@@ -175,3 +175,129 @@
     color: var(--app-fg);
   }
 }
+
+/* —— Lesson player CTAs (flat) —— */
+@layer components {
+  .lesson-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 1.1rem;
+    border-radius: 0.75rem;
+    border: 1px solid transparent;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: background-color 0.15s ease;
+    user-select: none;
+  }
+
+  .lesson-cta:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .lesson-cta:focus-visible {
+    outline: 2px solid var(--brand-blue);
+    outline-offset: 2px;
+  }
+
+  .lesson-cta--primary {
+    color: white;
+    background: var(--brand-blue);
+  }
+
+  .lesson-cta--primary:not(:disabled):hover {
+    background: var(--python-blue-dark);
+  }
+
+  .lesson-cta--accent {
+    color: var(--brand-navy);
+    background: var(--brand-yellow);
+  }
+
+  .lesson-cta--accent:not(:disabled):hover {
+    filter: brightness(0.97);
+  }
+
+  .lesson-cta--ghost {
+    color: var(--app-muted);
+    background: transparent;
+    border-color: var(--app-border);
+    font-weight: 500;
+  }
+
+  .lesson-cta--ghost:not(:disabled):hover {
+    background: var(--app-surface-hover);
+    color: var(--app-fg);
+  }
+
+  .lesson-step-enter {
+    animation: lesson-step-in 0.22s ease both;
+  }
+
+  .lesson-confidence-fill {
+    transition: width 0.45s ease;
+  }
+
+  .lesson-shake {
+    animation: lesson-shake 0.42s ease;
+  }
+
+  .lesson-pop {
+    animation: lesson-pop 0.4s ease both;
+  }
+}
+
+@keyframes lesson-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes lesson-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes lesson-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lesson-step-enter,
+  .lesson-shake,
+  .lesson-pop,
+  .lesson-confidence-fill {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+

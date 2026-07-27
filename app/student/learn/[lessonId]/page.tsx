@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm"
 
 import { LessonPlayer } from "@/components/lessons/player/lesson-player"
 import { Button } from "@/components/ui/button"
-import { requireStudentWithOnboarding } from "@/lib/auth/session"
+import { requireRole } from "@/lib/auth/session"
 import { getDb } from "@/lib/db"
 import { lessons } from "@/lib/db/schema"
 import { startLessonForConceptAction } from "@/lib/lessons/actions"
@@ -17,7 +17,7 @@ type LessonPageProps = {
 }
 
 const StudentLessonPage = async ({ params }: LessonPageProps) => {
-  const user = await requireStudentWithOnboarding()
+  const user = await requireRole(["student"])
   const { lessonId } = await params
   const lesson = await getLessonForStudent(lessonId, user.id)
 
@@ -54,7 +54,7 @@ const StudentLessonPage = async ({ params }: LessonPageProps) => {
         Lesson not found
       </h1>
       <p className="text-sm text-[var(--app-muted)]">
-        Open Variables again from your path — PyJo will start a fresh session.
+        Open Variables again from your path — a fresh session will start.
       </p>
       <Button asChild>
         <Link href="/student/learn">Back to path</Link>

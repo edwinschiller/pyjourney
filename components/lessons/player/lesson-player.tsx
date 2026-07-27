@@ -1,30 +1,33 @@
 "use client"
 
-import { ArrowLeft, ArrowRight, ListChecks, Loader2 } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useEffect, useState, useTransition } from "react"
+import { useEffect, useEffectEvent, useRef, useState } from "react"
 
 import { PythonRunner } from "@/components/editor/python-runner"
-import { BlockView } from "@/components/lessons/player/block-view"
-import { PyjoCoach } from "@/components/lessons/player/pyjo-coach"
-import { Button } from "@/components/ui/button"
+import {
+  BlockView,
+  type BlockViewHandle,
+} from "@/components/lessons/player/block-view"
+import { ConfidenceMeter } from "@/components/lessons/player/confidence-meter"
+import { LessonCta } from "@/components/lessons/player/lesson-cta"
+import { StepFeedback } from "@/components/lessons/player/step-feedback"
+import { useLessonKeyboard } from "@/components/lessons/player/use-lesson-keyboard"
 import type {
   LessonBlock,
   LessonEvent,
   LessonSession,
 } from "@/lib/ai/schemas/lesson-blocks"
-import { syncLessonProgressAction } from "@/lib/lessons/actions"
+import {
+  reviewApplyAction,
+  syncLessonProgressAction,
+} from "@/lib/lessons/actions"
 import {
   canAdvance,
   createInitialStepState,
   type LessonStepState,
 } from "@/lib/lessons/validate-step"
-import {
-  DEFAULT_RUN_TIMEOUT_MS,
-  getPyodideClient,
-  type LessonTestResult,
-} from "@/lib/pyodide"
 import { cn } from "@/lib/utils"
 
 type LessonPlayerProps = {
@@ -41,6 +44,7 @@ export const LessonPlayer = ({
   status,
 }: LessonPlayerProps) => {
   const router = useRouter()
+  const blockRef = useRef<BlockViewHandle>(null)
   const [session, setSession] = useState(initialSession)
   const [stepIndex, setStepIndex] = useState(initialSession.cursor)
   const current = session.blocks[stepIndex] as LessonBlock | undefined
@@ -48,25 +52,32 @@ export const LessonPlayer = ({
     createInitialStepState(current ?? session.blocks[0]!)
   )
   const [code, setCode] = useState(
-    current?.kind === "coding" ? current.starterCode : ""
+    current?.kind === "apply" ? current.starterCode : ""
   )
-  const [testResults, setTestResults] = useState<LessonTestResult[] | null>(
-    null
-  )
-  const [testsBusy, setTestsBusy] = useState(false)
-  const [coachSpeak, setCoachSpeak] = useState(
-    initialSession.lastCoachSpeak ??
-      "I'm PyJo — I'll guide this lesson based on how you answer."
-  )
+  const [criteriaNotes, setCriteriaNotes] = useState<
+    Array<{ criterion: string; met: boolean; note?: string }> | null
+  >(null)
+  const [reviewBusy, setReviewBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(status === "completed")
-  const [syncing, startSync] = useTransition()
+  const [syncing, setSyncing] = useState(false)
+  const [canCheck, setCanCheck] = useState(false)
+  const [canRetry, setCanRetry] = useState(false)
+  const [choiceCount, setChoiceCount] = useState(0)
+  const [stepKey, setStepKey] = useState(0)
+  const busyRef = useRef(false)
+  const syncLabelRef = useRef("Continue")
 
   useEffect(() => {
     if (!current) return
     setStepState(createInitialStepState(current))
-    setTestResults(null)
-    if (current.kind === "coding") setCode(current.starterCode)
+    setCriteriaNotes(null)
+    setCanCheck(false)
+    setCanRetry(false)
+    setChoiceCount(current.kind === "quiz" ? current.choices.length : 0)
+    setStepKey((value) => value + 1)
+    busyRef.current = false
+    if (current.kind === "apply") setCode(current.starterCode || "")
   }, [current?.id])
 
   useEffect(() => {
@@ -75,13 +86,14 @@ export const LessonPlayer = ({
     }
   }, [session.blocks.length, stepIndex])
 
-  const persist = (input: {
+  const persist = async (input: {
     cursor?: number
     event?: LessonEvent
     requestNext?: boolean
     completeLesson?: boolean
-  }) => {
-    startSync(async () => {
+  }): Promise<boolean> => {
+    setSyncing(true)
+    try {
       const result = await syncLessonProgressAction({
         lessonId,
         cursor: input.cursor ?? stepIndex,
@@ -90,192 +102,297 @@ export const LessonPlayer = ({
         completeLesson: input.completeLesson,
       })
       if (!result?.ok || !result.session) {
-        setError(result?.error ?? "Could not sync with PyJo.")
-        return
+        setError(result?.error ?? "Could not sync lesson.")
+        return false
       }
       setSession(result.session)
-      if (result.coachSpeak) setCoachSpeak(result.coachSpeak)
       if (typeof result.session.cursor === "number") {
         setStepIndex(result.session.cursor)
       }
       if (result.completed) setDone(true)
-    })
+      return true
+    } catch {
+      setError("Could not sync lesson.")
+      return false
+    } finally {
+      setSyncing(false)
+      busyRef.current = false
+    }
   }
 
-  const handleChecked = (passed: boolean) => {
-    if (!current) return
+  const handleContinue = useEffectEvent(async () => {
+    if (!current || done || busyRef.current || syncing) return
+    syncLabelRef.current = current.kind === "complete" ? "Finish" : "Continue"
+    if (current.kind === "complete") {
+      busyRef.current = true
+      const ok = await persist({ completeLesson: true })
+      if (ok) router.push("/student/learn")
+      return
+    }
+    if (!canAdvance(current, stepState)) return
+
+    busyRef.current = true
+    const atEnd = stepIndex >= session.blocks.length - 1
+    if (atEnd) {
+      await persist({ cursor: stepIndex, requestNext: true })
+      return
+    }
+    const next = stepIndex + 1
+    setStepIndex(next)
+    await persist({ cursor: next })
+  })
+
+  const handleChecked = useEffectEvent(async (passed: boolean) => {
+    if (!current || busyRef.current) return
+    syncLabelRef.current = "Check"
     const event: LessonEvent = {
       at: new Date().toISOString(),
       blockId: current.id,
       kind: current.kind,
       passed,
+      topicId: current.topicId,
       latencyMs: Date.now() - stepState.startedAt,
       attempts: stepState.attempts + 1,
       detail: current.kind,
     }
-    // Failures ask PyJo for remediation immediately; passes wait for Continue
-    if (!passed) {
-      persist({ event, requestNext: true })
-    } else {
-      persist({ event, requestNext: false })
-    }
-  }
+    busyRef.current = true
+    // Fail → remediating next block. Pass → stay; user continues manually.
+    await persist({ event, requestNext: !passed })
+  })
 
-  const handleContinue = () => {
-    if (!current) return
-    if (current.kind === "complete") {
-      persist({ completeLesson: true })
-      return
-    }
-    if (!canAdvance(current, stepState)) return
+  const handleCheck = useEffectEvent(() => {
+    if (busyRef.current || syncing) return
+    syncLabelRef.current = "Check"
+    blockRef.current?.check()
+  })
 
-    const atEnd = stepIndex >= session.blocks.length - 1
-    if (atEnd) {
-      persist({
-        cursor: stepIndex,
-        requestNext: true,
-      })
-      return
-    }
-    const next = stepIndex + 1
-    setStepIndex(next)
-    persist({ cursor: next })
-  }
+  const handleRetry = useEffectEvent(() => {
+    blockRef.current?.retry()
+  })
 
-  const handleRunTests = async () => {
-    if (!current || current.kind !== "coding") return
-    setTestsBusy(true)
+  const handleBack = useEffectEvent(async () => {
+    if (stepIndex <= 0 || busyRef.current || syncing) return
+    syncLabelRef.current = "Back"
+    busyRef.current = true
+    const prev = stepIndex - 1
+    setStepIndex(prev)
+    await persist({ cursor: prev })
+  })
+
+  const handleReviewApply = useEffectEvent(async () => {
+    if (!current || current.kind !== "apply" || reviewBusy || syncing) return
+    syncLabelRef.current = "Review code"
+    setReviewBusy(true)
     setError(null)
     try {
-      const result = await getPyodideClient().runTests(code, current.tests, {
-        timeoutMs: DEFAULT_RUN_TIMEOUT_MS,
+      const result = await reviewApplyAction({
+        lessonId,
+        code,
+        cursor: stepIndex,
       })
-      setTestResults(result.results)
-      const passed = result.ok
-      setStepState((state) => ({
-        ...state,
-        codingTestsPassed: passed,
-        attempts: state.attempts + 1,
-      }))
-      const event: LessonEvent = {
-        at: new Date().toISOString(),
-        blockId: current.id,
-        kind: "coding",
-        passed,
-        latencyMs: Date.now() - stepState.startedAt,
-        attempts: stepState.attempts + 1,
-        detail: { tests: result.results },
+      if (!result?.ok || !result.session) {
+        setError(result?.error ?? "Could not review your code.")
+        return
       }
-      persist({ event, requestNext: true })
-    } catch (runError) {
+      setSession(result.session)
+      if (result.criteriaResults) setCriteriaNotes(result.criteriaResults)
+      if (result.passed) {
+        setStepState((state) => ({ ...state, applyPassed: true }))
+        if (typeof result.session.cursor === "number") {
+          setStepIndex(result.session.cursor)
+        }
+      }
+      if (result.completed) setDone(true)
+    } catch (reviewError) {
       setError(
-        runError instanceof Error ? runError.message : "Could not run tests."
+        reviewError instanceof Error ? reviewError.message : "Review failed."
       )
     } finally {
-      setTestsBusy(false)
+      setReviewBusy(false)
     }
-  }
+  })
+
+  const isApply = current?.kind === "apply"
+  const isComplete = current?.kind === "complete"
+  const isExplain = current?.kind === "explain"
+  const canContinueNow = Boolean(
+    current &&
+      !syncing &&
+      !busyRef.current &&
+      (isComplete ||
+        (canAdvance(current, stepState) &&
+          !canCheck &&
+          (isExplain ||
+            current.kind === "quiz" ||
+            current.kind === "practice" ||
+            (isApply && stepState.applyPassed))))
+  )
+
+  useLessonKeyboard({
+    enabled: !done && !syncing && !reviewBusy,
+    canContinue: canContinueNow,
+    canBack: stepIndex > 0 && !isApply,
+    canSubmit: canCheck || (Boolean(isApply) && !stepState.applyPassed),
+    choiceCount,
+    onContinue: () => {
+      void handleContinue()
+    },
+    onBack: () => {
+      void handleBack()
+    },
+    onSubmit: () => {
+      if (isApply) {
+        void handleReviewApply()
+        return
+      }
+      handleCheck()
+    },
+    onChoice: (index) => blockRef.current?.selectChoice(index),
+  })
 
   if (!current) {
     return (
       <p className="text-sm text-destructive" role="alert">
-        Waiting for PyJo…
+        Waiting for next step…
       </p>
     )
   }
 
-  const isCoding = current.kind === "coding"
-  const isComplete = current.kind === "complete"
+  const footerBusy = syncing || reviewBusy
+
+  const footerPrimary = (() => {
+    if (done) return null
+    // Freeze a single loading CTA while syncing — avoids Check/Continue/Back
+    // swapping mid-request (and backdrop-blur ghost trails).
+    if (footerBusy) {
+      return (
+        <LessonCta
+          tone={syncLabelRef.current === "Review code" ? "accent" : "primary"}
+          loading
+          aria-busy
+          aria-label={syncLabelRef.current}
+        >
+          {syncLabelRef.current}
+        </LessonCta>
+      )
+    }
+    if (isApply && !stepState.applyPassed) {
+      return (
+        <LessonCta
+          tone="accent"
+          onClick={() => void handleReviewApply()}
+          aria-label="Review my code"
+        >
+          Review code
+        </LessonCta>
+      )
+    }
+    if (canCheck) {
+      return (
+        <LessonCta onClick={handleCheck} aria-label="Check answer">
+          Check
+        </LessonCta>
+      )
+    }
+    if (canRetry) {
+      return (
+        <LessonCta tone="ghost" onClick={handleRetry} aria-label="Try again">
+          Try again
+        </LessonCta>
+      )
+    }
+    return (
+      <LessonCta
+        tone={isComplete ? "accent" : "primary"}
+        disabled={!canAdvance(current, stepState) && !isComplete}
+        onClick={() => void handleContinue()}
+        aria-label={isComplete ? "Finish lesson" : "Continue"}
+      >
+        {isComplete ? "Finish" : "Continue"}
+      </LessonCta>
+    )
+  })()
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4">
+    <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/student/learn" aria-label="Back to path">
-            <ArrowLeft />
-            Path
-          </Link>
-        </Button>
-        <p className="text-xs font-medium tracking-wide text-[var(--app-muted)] uppercase">
+        <Link
+          href="/student/learn"
+          aria-label="Back to path"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-[var(--app-muted)] transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-fg)]"
+        >
+          <ArrowLeft className="size-4" aria-hidden />
+          Path
+        </Link>
+        <p className="text-xs font-medium tracking-wide text-[var(--app-muted)]">
           {conceptTitle}
         </p>
-        {syncing ? (
-          <Loader2 className="size-4 animate-spin text-[var(--app-muted)]" />
-        ) : (
-          <span className="w-4" aria-hidden />
-        )}
+        <span
+          className={cn(
+            "size-4",
+            syncing &&
+              "animate-spin rounded-full border-2 border-[var(--brand-blue)] border-t-transparent"
+          )}
+          aria-hidden={!syncing}
+          aria-label={syncing ? "Syncing" : undefined}
+        />
       </div>
 
-      <PyjoCoach speak={coachSpeak} pace={session.learner.pace} />
+      <ConfidenceMeter
+        confidence={session.confidence}
+        topics={session.topics}
+      />
 
-      <div className="flex shrink-0 items-center justify-between text-xs text-[var(--app-muted)]">
-        <span>
-          Step {stepIndex + 1}
-          {session.blocks.length ? ` · ${session.blocks.length} revealed` : ""}
-        </span>
-        <span>
-          confidence {Math.round(session.learner.confidence * 100)}%
-        </span>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {isCoding ? (
-          <div className="flex min-h-[520px] flex-col gap-3">
+      <div
+        key={stepKey}
+        className="lesson-step-enter min-h-0 flex-1 overflow-y-auto pb-2"
+      >
+        {isApply ? (
+          <div className="flex min-h-[480px] flex-col gap-3">
             <div>
               <h2 className="text-xl font-bold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
                 {current.title}
               </h2>
-              <ul className="mt-2 space-y-1 text-sm text-[var(--app-muted)]">
-                {current.lines.map((line) => (
-                  <li key={line}>{line}</li>
+              <p className="mt-1.5 text-sm leading-relaxed text-[var(--app-muted)]">
+                {current.brief}
+              </p>
+              <ul className="mt-3 space-y-1.5">
+                {current.criteria.map((criterion) => (
+                  <li
+                    key={criterion}
+                    className="flex gap-2 text-sm text-[var(--app-muted)]"
+                  >
+                    <span className="text-[var(--brand-blue)]" aria-hidden>
+                      ·
+                    </span>
+                    {criterion}
+                  </li>
                 ))}
               </ul>
-              {current.successCriteria ? (
-                <p className="mt-2 text-xs text-[var(--brand-blue)]">
-                  Success: {current.successCriteria}
-                </p>
-              ) : null}
             </div>
-            <div className="min-h-[420px] flex-1">
+            <div className="min-h-[400px] flex-1 overflow-hidden rounded-xl border border-[var(--app-border)]">
               <PythonRunner
                 fillHeight
                 code={code}
                 onCodeChange={setCode}
-                className="min-h-[420px]"
+                className="min-h-[400px]"
                 toolbarLeading={
-                  <span className="text-sm font-semibold">Your code</span>
-                }
-                toolbarExtra={
-                  <Button
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                    disabled={testsBusy || done}
-                    onClick={() => void handleRunTests()}
-                    aria-label="Check tests"
-                  >
-                    {testsBusy ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <ListChecks />
-                    )}
-                    Check tests
-                  </Button>
+                  <span className="text-sm font-medium">Your solution</span>
                 }
               />
             </div>
-            {testResults ? (
-              <ul className="flex flex-col gap-1 text-sm">
-                {testResults.map((result) => (
-                  <li
-                    key={result.id}
-                    className={cn(
-                      result.passed
-                        ? "text-[var(--brand-blue)]"
-                        : "text-destructive"
-                    )}
-                  >
-                    {result.passed ? "✓" : "✗"} {result.description}
+            {criteriaNotes ? (
+              <ul className="flex flex-col gap-2">
+                {criteriaNotes.map((row) => (
+                  <li key={row.criterion}>
+                    <StepFeedback
+                      passed={row.met}
+                      message={
+                        row.note
+                          ? `${row.criterion} — ${row.note}`
+                          : row.criterion
+                      }
+                    />
                   </li>
                 ))}
               </ul>
@@ -283,10 +400,19 @@ export const LessonPlayer = ({
           </div>
         ) : (
           <BlockView
+            ref={blockRef}
             block={current}
             stepState={stepState}
             onStepStateChange={setStepState}
-            onChecked={handleChecked}
+            onChecked={(passed) => {
+              void handleChecked(passed)
+            }}
+            hideInlineCheck
+            onActionStateChange={(state) => {
+              setCanCheck(state.canCheck)
+              setCanRetry(state.canRetry)
+              setChoiceCount(state.choiceCount)
+            }}
           />
         )}
       </div>
@@ -297,33 +423,45 @@ export const LessonPlayer = ({
         </p>
       ) : null}
 
-      {done ? (
-        <div className="flex flex-wrap gap-2">
-          <Button asChild>
-            <Link href="/student/learn">Back to path</Link>
-          </Button>
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => router.push("/student")}
+      <footer className="sticky bottom-0 z-10 isolate shrink-0 overflow-hidden border-t border-[var(--app-border)] bg-[var(--app-bg)] pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {done ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            <LessonCta
+              onClick={() => router.push("/student/learn")}
+              aria-label="Back to path"
+            >
+              Back to path
+            </LessonCta>
+            <LessonCta
+              tone="ghost"
+              onClick={() => router.push("/student")}
+              aria-label="Dashboard"
+            >
+              Dashboard
+            </LessonCta>
+          </div>
+        ) : (
+          <div
+            key={
+              footerBusy
+                ? `busy:${syncLabelRef.current}`
+                : `idle:${canCheck}:${canRetry}:${isComplete}:${stepIndex}`
+            }
+            className="flex items-center justify-end gap-2"
           >
-            Dashboard
-          </Button>
-        </div>
-      ) : (
-        <div className="flex shrink-0 justify-end border-t border-[var(--app-border)] pt-3">
-          <Button
-            type="button"
-            size="sm"
-            disabled={!canAdvance(current, stepState) && !isComplete}
-            onClick={handleContinue}
-            aria-label={isComplete ? "Finish with PyJo" : "Continue"}
-          >
-            {isComplete ? "Finish" : "Continue"}
-            <ArrowRight />
-          </Button>
-        </div>
-      )}
+            {stepIndex > 0 && !isApply && !footerBusy ? (
+              <LessonCta
+                tone="ghost"
+                onClick={() => void handleBack()}
+                aria-label="Previous step"
+              >
+                Back
+              </LessonCta>
+            ) : null}
+            {footerPrimary}
+          </div>
+        )}
+      </footer>
     </div>
   )
 }

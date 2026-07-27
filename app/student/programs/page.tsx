@@ -2,13 +2,13 @@ import Link from "next/link"
 
 import { ProgramsList } from "@/components/programs/programs-list"
 import { Button } from "@/components/ui/button"
-import { requireStudentWithOnboarding } from "@/lib/auth/session"
+import { requireRole } from "@/lib/auth/session"
 import { listIdeProgramsForStudent } from "@/lib/programs"
 
 export const dynamic = "force-dynamic"
 
 const StudentProgramsPage = async () => {
-  const user = await requireStudentWithOnboarding()
+  const user = await requireRole(["student"])
   const programs = await listIdeProgramsForStudent(user.id)
 
   const programItems = programs.map((program) => ({

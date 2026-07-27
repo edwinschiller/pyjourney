@@ -2,7 +2,7 @@ import Link from "next/link"
 
 import { JoinClassroomForm } from "@/components/student/join-classroom-form"
 import { Button } from "@/components/ui/button"
-import { requireStudentWithOnboarding } from "@/lib/auth/session"
+import { requireRole } from "@/lib/auth/session"
 import { listStudentClassrooms } from "@/lib/classrooms/queries"
 import {
   loadCurriculumGraph,
@@ -14,7 +14,7 @@ import {
   listMasteryForStudent,
   scoreToBand,
 } from "@/lib/mastery"
-import { isOnboardingComplete } from "@/lib/onboarding"
+import { listCompletedConceptIds } from "@/lib/lessons/queries"
 
 export const dynamic = "force-dynamic"
 
@@ -26,18 +26,18 @@ const bandLabel = (band: string) => {
 }
 
 const StudentDashboardPage = async () => {
-  const user = await requireStudentWithOnboarding()
-  const [classrooms, masteryRecords, masteryMap, graph] = await Promise.all([
-    listStudentClassrooms(user.id),
-    listMasteryForStudent(user.id),
-    getMasteryScoreMapForStudent(user.id),
-    loadCurriculumGraph(),
-  ])
-  const next = await resolveNextConceptForStudent(user.id, masteryMap)
-
-  const onboarding = isOnboardingComplete(user.onboarding)
-    ? user.onboarding
-    : null
+  const user = await requireRole(["student"])
+  const [classrooms, masteryRecords, masteryMap, graph, completedIds] =
+    await Promise.all([
+      listStudentClassrooms(user.id),
+      listMasteryForStudent(user.id),
+      getMasteryScoreMapForStudent(user.id),
+      loadCurriculumGraph(),
+      listCompletedConceptIds(user.id),
+    ])
+  const next = await resolveNextConceptForStudent(user.id, masteryMap, {
+    completedConceptIds: completedIds,
+  })
 
   const masteryRows = masteryRecords
     .map((record) => {
@@ -58,8 +58,7 @@ const StudentDashboardPage = async () => {
         </h1>
         <p className="text-base text-[var(--app-muted)]">
           Welcome{user.displayName ? `, ${user.displayName}` : ""}. You’re in{" "}
-          {ACADEMY_CLASS_NAME}
-          {onboarding ? ` · pace: ${onboarding.pace}` : ""}.
+          {ACADEMY_CLASS_NAME}.
         </p>
       </header>
 
@@ -122,8 +121,8 @@ const StudentDashboardPage = async () => {
         </h2>
         {masteryRows.length === 0 ? (
           <div className="app-surface rounded-xl p-5 text-sm text-[var(--app-muted)]">
-            No mastery scores yet. Finish onboarding or complete a lesson to get
-            started.
+            No mastery scores yet. Complete a lesson to get started — everyone
+            begins at 0.
           </div>
         ) : (
           <ul className="app-surface divide-y divide-[var(--app-border)] rounded-xl">

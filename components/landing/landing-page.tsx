@@ -269,20 +269,20 @@ export const LandingPage = () => {
                 How it works
               </h2>
               <p className="mt-2 text-base text-[var(--app-muted)]">
-                A short loop from onboarding to insight.
+                A short loop from first lesson to insight.
               </p>
             </div>
             <ol className="grid gap-4 md:grid-cols-3">
               {[
                 {
                   step: "1",
-                  title: "Start from mastery",
-                  text: "A short onboarding sets the first competency targets.",
+                  title: "Start from zero",
+                  text: "Every learner begins with mastery at 0 on every concept.",
                 },
                 {
                   step: "2",
                   title: "Learn and code",
-                  text: "Adaptive lessons, deterministic tests, and staged hints.",
+                  text: "Adaptive lessons, deterministic checks, and open apply tasks.",
                 },
                 {
                   step: "3",

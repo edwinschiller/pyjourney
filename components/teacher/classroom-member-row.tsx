@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useActionState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -48,19 +49,28 @@ export const ClassroomMemberRow = ({
           </p>
         ) : null}
       </div>
-      <form action={formAction}>
-        <input type="hidden" name="classroomId" value={classroomId} />
-        <input type="hidden" name="studentId" value={studentId} />
-        <Button
-          type="submit"
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          aria-label={`Remove ${label} from class`}
+      <div className="flex items-center gap-2">
+        <Link
+          href={`/teacher/classes/${classroomId}/students/${studentId}`}
+          className="rounded-md px-2 py-1.5 text-sm font-medium text-[var(--brand-blue)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)]"
+          aria-label={`View insights for ${label}`}
         >
-          {pending ? "Removing…" : "Remove"}
-        </Button>
-      </form>
+          Insights
+        </Link>
+        <form action={formAction}>
+          <input type="hidden" name="classroomId" value={classroomId} />
+          <input type="hidden" name="studentId" value={studentId} />
+          <Button
+            type="submit"
+            variant="ghost"
+            size="sm"
+            disabled={pending}
+            aria-label={`Remove ${label} from class`}
+          >
+            {pending ? "Removing…" : "Remove"}
+          </Button>
+        </form>
+      </div>
     </li>
   )
 }
