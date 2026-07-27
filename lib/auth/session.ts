@@ -15,6 +15,9 @@ import {
   exerciseAttempts,
   getDb,
   hints,
+  learnerEvents,
+  learnerMisconceptionStats,
+  learnerTopicStats,
   lessons,
   profiles,
   savedPrograms,
@@ -22,8 +25,6 @@ import {
 } from "@/lib/db"
 import { ensureAcademyMembership } from "@/lib/db/academy"
 import { withDbRetry } from "@/lib/db/retry"
-import { isOnboardingComplete } from "@/lib/onboarding/parse"
-
 export type UserRole = "student" | "teacher" | "admin"
 
 export type SessionUser = {
@@ -121,6 +122,18 @@ const relinkProfileId = async (oldId: string, newId: string) => {
     .update(studentInsightReports)
     .set({ studentId: newId })
     .where(eq(studentInsightReports.studentId, oldId))
+  await db
+    .update(learnerEvents)
+    .set({ studentId: newId })
+    .where(eq(learnerEvents.studentId, oldId))
+  await db
+    .update(learnerTopicStats)
+    .set({ studentId: newId })
+    .where(eq(learnerTopicStats.studentId, oldId))
+  await db
+    .update(learnerMisconceptionStats)
+    .set({ studentId: newId })
+    .where(eq(learnerMisconceptionStats.studentId, oldId))
   await db
     .update(auditEvents)
     .set({ actorId: newId })
@@ -259,10 +272,6 @@ export const requireRole = async (roles: UserRole[]): Promise<SessionUser> => {
   return user
 }
 
-export const requireStudentWithOnboarding = async (): Promise<SessionUser> => {
-  const user = await requireRole(["student"])
-  if (!isOnboardingComplete(user.onboarding)) {
-    redirect("/onboarding")
-  }
-  return user
-}
+/** @deprecated Onboarding removed — mastery starts at 0 for everyone. */
+export const requireStudentWithOnboarding = async (): Promise<SessionUser> =>
+  requireRole(["student"])

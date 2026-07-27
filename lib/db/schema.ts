@@ -46,6 +46,16 @@ export const savedProgramSourceEnum = pgEnum("saved_program_source", [
   "ide",
   "lesson",
 ])
+export const learnerEventSourceEnum = pgEnum("learner_event_source", [
+  "quiz",
+  "practice",
+  "apply",
+  "lesson_complete",
+])
+export const learnerEventOutcomeEnum = pgEnum("learner_event_outcome", [
+  "pass",
+  "fail",
+])
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -443,4 +453,117 @@ export const auditEvents = pgTable(
       .notNull(),
   },
   (table) => [index("audit_events_actor_id_idx").on(table.actorId)]
+)
+
+/**
+ * Append-only learning signals (quiz/practice/apply checks).
+ * Source of truth for insights; session JSON remains the live lesson state.
+ */
+export const learnerEvents = pgTable(
+  "learner_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => profiles.id),
+    conceptId: uuid("concept_id")
+      .notNull()
+      .references(() => concepts.id),
+    lessonId: uuid("lesson_id").references(() => lessons.id, {
+      onDelete: "set null",
+    }),
+    topicId: text("topic_id"),
+    source: learnerEventSourceEnum("source").notNull(),
+    outcome: learnerEventOutcomeEnum("outcome").notNull(),
+    /** Short machine signal, e.g. quiz_fail, criterion_miss. */
+    signal: text("signal").notNull(),
+    /** Optional curriculum misconception / struggle label. */
+    misconceptionTag: text("misconception_tag"),
+    latencyMs: integer("latency_ms"),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("learner_events_student_created_idx").on(
+      table.studentId,
+      table.createdAt
+    ),
+    index("learner_events_student_concept_idx").on(
+      table.studentId,
+      table.conceptId
+    ),
+    index("learner_events_misconception_idx").on(
+      table.studentId,
+      table.misconceptionTag
+    ),
+  ]
+)
+
+/** Per-student rollup of attempts on a concept topic. */
+export const learnerTopicStats = pgTable(
+  "learner_topic_stats",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => profiles.id),
+    conceptId: uuid("concept_id")
+      .notNull()
+      .references(() => concepts.id),
+    topicId: text("topic_id").notNull(),
+    topicTitle: text("topic_title").notNull().default(""),
+    attempts: integer("attempts").notNull().default(0),
+    passes: integer("passes").notNull().default(0),
+    fails: integer("fails").notNull().default(0),
+    totalLatencyMs: integer("total_latency_ms").notNull().default(0),
+    lastOutcome: learnerEventOutcomeEnum("last_outcome"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("learner_topic_stats_unique_idx").on(
+      table.studentId,
+      table.conceptId,
+      table.topicId
+    ),
+    index("learner_topic_stats_student_idx").on(table.studentId),
+    index("learner_topic_stats_fails_idx").on(table.studentId, table.fails),
+  ]
+)
+
+/** Per-student counts of recurring misconception / struggle tags. */
+export const learnerMisconceptionStats = pgTable(
+  "learner_misconception_stats",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => profiles.id),
+    conceptId: uuid("concept_id").references(() => concepts.id),
+    tag: text("tag").notNull(),
+    count: integer("count").notNull().default(0),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("learner_misconception_stats_unique_idx").on(
+      table.studentId,
+      table.tag
+    ),
+    index("learner_misconception_stats_student_idx").on(table.studentId),
+    index("learner_misconception_stats_count_idx").on(
+      table.studentId,
+      table.count
+    ),
+  ]
 )
