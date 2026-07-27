@@ -20,17 +20,24 @@ export type SelectNextConceptInput = {
   masteryByConceptId: MasteryScoreMap
   /** Teacher assignment concept id — wins over adaptive selection when set */
   assignmentConceptId?: string | null
+  /** Lesson-completed concepts count as done (not picked as "next"). */
+  completedConceptIds?: Set<string>
 }
 
 /**
  * Pick the next concept:
  * 1. If assignmentConceptId is set and exists → override (even if locked)
- * 2. Else lowest orderIndex among unlocked concepts not yet mastered
+ * 2. Else lowest orderIndex among unlocked concepts not yet done
  */
 export const selectNextConcept = (
   input: SelectNextConceptInput
 ): NextConceptResult | null => {
-  const { graph, masteryByConceptId, assignmentConceptId } = input
+  const {
+    graph,
+    masteryByConceptId,
+    assignmentConceptId,
+    completedConceptIds,
+  } = input
 
   if (assignmentConceptId) {
     const assigned = graph.conceptById.get(assignmentConceptId)
@@ -38,7 +45,8 @@ export const selectNextConcept = (
       const unmet = getUnmetPrerequisites(
         graph,
         assigned.id,
-        masteryByConceptId
+        masteryByConceptId,
+        completedConceptIds
       )
       return {
         concept: assigned,
@@ -49,10 +57,20 @@ export const selectNextConcept = (
   }
 
   const candidates = graph.concepts.filter((concept) => {
-    if (!isConceptUnlocked(graph, concept.id, masteryByConceptId)) {
+    if (
+      !isConceptUnlocked(
+        graph,
+        concept.id,
+        masteryByConceptId,
+        completedConceptIds
+      )
+    ) {
       return false
     }
-    return getMasteryScore(masteryByConceptId, concept.id) < NEXT_CONCEPT_DONE_SCORE
+    if (completedConceptIds?.has(concept.id)) return false
+    return (
+      getMasteryScore(masteryByConceptId, concept.id) < NEXT_CONCEPT_DONE_SCORE
+    )
   })
 
   const next = candidates[0]

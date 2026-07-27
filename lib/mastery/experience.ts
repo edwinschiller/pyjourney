@@ -1,22 +1,19 @@
 import type { PriorExperience } from "./bands"
 
-/** Start score applied to the first / overlapping concepts from onboarding. */
+/** Mastery always starts at 0 — onboarding no longer seeds scores. */
 export const EXPERIENCE_START_SCORE: Record<PriorExperience, number> = {
-  none: 5,
-  little: 20,
-  some: 40,
-  confident: 55,
+  none: 0,
+  little: 0,
+  some: 0,
+  confident: 0,
 }
 
-/**
- * Concepts that receive the onboarding start score for a given experience.
- * Later concepts stay at 0 until unlocked through learning.
- */
+/** No concepts are pre-seeded from experience. */
 export const EXPERIENCE_SEED_SLUGS: Record<PriorExperience, string[]> = {
-  none: ["variables"],
-  little: ["variables"],
-  some: ["variables", "data_types"],
-  confident: ["variables", "data_types", "conditions"],
+  none: [],
+  little: [],
+  some: [],
+  confident: [],
 }
 
 export const getStartScoreForExperience = (experience: PriorExperience) =>

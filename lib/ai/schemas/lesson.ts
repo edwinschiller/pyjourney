@@ -1,13 +1,11 @@
 /**
- * @deprecated Prefer lesson-blocks + PyJo sessions (schema version 3).
+ * @deprecated Prefer lesson-blocks sessions (schema version 4).
  */
 export {
   lessonBlockSchema,
   lessonSessionSchema,
-  lessonTestSchema,
   parseLessonSession,
   safeParseLessonSession,
   type LessonBlock,
   type LessonSession,
-  type LessonTest,
 } from "@/lib/ai/schemas/lesson-blocks"

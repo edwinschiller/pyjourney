@@ -9,6 +9,10 @@ import {
   getLessonForStudent,
   updateLessonContent,
 } from "@/lib/lessons/queries"
+import {
+  listStruggleTopicIdsForStudent,
+  recordLessonCheckEvent,
+} from "@/lib/memory"
 import { runPyjoNext } from "@/lib/pyjo/director"
 
 export const runtime = "nodejs"
@@ -40,13 +44,33 @@ export const POST = async (request: Request) => {
       ? lessonEventSchema.parse(body.event)
       : undefined
 
+    const struggleTopicIds = await listStruggleTopicIdsForStudent(
+      user.id,
+      lesson.conceptId
+    )
+
     const result = await runPyjoNext({
       session: parseLessonSession(lesson.content),
       event,
       bootstrap: body.bootstrap,
+      struggleTopicIds,
     })
 
     await updateLessonContent(lessonId, user.id, result.session)
+
+    if (event) {
+      const topicTitle =
+        result.session.topics.find((topic) => topic.id === event.topicId)
+          ?.title ?? null
+      await recordLessonCheckEvent({
+        studentId: user.id,
+        conceptId: lesson.conceptId,
+        conceptSlug: lesson.conceptSlug,
+        lessonId,
+        event,
+        topicTitle,
+      })
+    }
 
     return NextResponse.json({
       ok: true,
@@ -58,6 +82,6 @@ export const POST = async (request: Request) => {
     })
   } catch (error) {
     console.error("POST /api/pyjo/next", error)
-    return NextResponse.json({ error: "PyJo could not continue." }, { status: 500 })
+    return NextResponse.json({ error: "Could not continue the lesson." }, { status: 500 })
   }
 }

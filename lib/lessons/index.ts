@@ -1,6 +1,7 @@
 export {
   startLessonForConceptAction,
   syncLessonProgressAction,
+  reviewApplyAction,
 } from "./actions"
 export { getLessonForStudent } from "./queries"
 export { buildLearningPath } from "./path"

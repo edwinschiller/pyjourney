@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm"
 
 import {
+  normalizeLessonSession,
   parseLessonSession,
   type LessonSession,
 } from "@/lib/ai/schemas/lesson-blocks"
@@ -45,6 +46,18 @@ export const getLessonForStudent = async (
   if (!row) return null
 
   try {
+    const parsed = parseLessonSession(row.content)
+    const content = normalizeLessonSession(parsed)
+    if (content.confidence !== parsed.confidence && row.status === "active") {
+      await db
+        .update(lessons)
+        .set({
+          content,
+          updatedAt: new Date(),
+          schemaVersion: 4,
+        })
+        .where(and(eq(lessons.id, lessonId), eq(lessons.studentId, studentId)))
+    }
     return {
       id: row.id,
       studentId: row.studentId,
@@ -52,7 +65,7 @@ export const getLessonForStudent = async (
       conceptSlug: row.conceptSlug,
       conceptTitle: row.conceptTitle,
       status: row.status,
-      content: parseLessonSession(row.content),
+      content,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }
@@ -109,7 +122,7 @@ export const updateLessonContent = async (
     .set({
       content,
       updatedAt: new Date(),
-      schemaVersion: 3,
+      schemaVersion: 4,
       ...(status ? { status } : {}),
     })
     .where(and(eq(lessons.id, lessonId), eq(lessons.studentId, studentId)))

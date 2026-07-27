@@ -71,7 +71,10 @@ export const findActiveAssignmentConceptId = async (
 export const resolveNextConceptForStudent = async (
   studentId: string,
   masteryByConceptId: MasteryScoreMap,
-  options?: { honorAssignments?: boolean }
+  options?: {
+    honorAssignments?: boolean
+    completedConceptIds?: Set<string>
+  }
 ): Promise<NextConceptResult | null> => {
   const graph = await loadCurriculumGraph()
   const honorAssignments = options?.honorAssignments ?? true
@@ -83,12 +86,14 @@ export const resolveNextConceptForStudent = async (
     graph,
     masteryByConceptId,
     assignmentConceptId,
+    completedConceptIds: options?.completedConceptIds,
   })
 }
 
 export const getUnlockedConceptsForStudent = async (
-  masteryByConceptId: MasteryScoreMap
+  masteryByConceptId: MasteryScoreMap,
+  completedConceptIds?: Set<string>
 ) => {
   const graph = await loadCurriculumGraph()
-  return listUnlockedConcepts(graph, masteryByConceptId)
+  return listUnlockedConcepts(graph, masteryByConceptId, completedConceptIds)
 }
