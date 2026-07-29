@@ -9,8 +9,7 @@ import { ensureAcademyMembership } from "@/lib/db/academy"
 export type BootstrapRole = Extract<UserRole, "student" | "teacher">
 
 export const bootstrapAppUser = async (input: {
-  role: BootstrapRole
-  applyRole?: boolean
+  role?: BootstrapRole
 }): Promise<SessionUser | null> => {
   if (!isNeonAuthConfigured()) {
     return null
@@ -32,7 +31,6 @@ export const bootstrapAppUser = async (input: {
     email: user.email,
     displayName: user.name ?? null,
     role: input.role,
-    applyRole: input.applyRole ?? false,
   })
 
   if (profile.role === "student") {

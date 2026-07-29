@@ -126,9 +126,9 @@ export const AuthForm = () => {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        role: accountRole,
-        // Registration (and role switch intent) may set/update student|teacher
-        applyRole: mode === "register" || accountRole === "teacher",
+        // Role is registration intent only. Existing profile roles are
+        // authoritative and never changed by this request.
+        role: mode === "register" ? accountRole : undefined,
       }),
     })
 
@@ -278,38 +278,42 @@ export const AuthForm = () => {
           <p className="mt-1 text-sm text-[var(--app-muted)]">
             {step === "verify"
               ? `We sent a code to ${email}`
-              : accountRole === "student"
-                ? "Learn in PyJourney Academy — or join a teacher’s class later"
-                : "Create classes and invite students with a join code"}
+              : mode === "signin"
+                ? "Continue with the role assigned to your account"
+                : accountRole === "student"
+                  ? "Learn in PyJourney Academy — or join a teacher’s class later"
+                  : "Create classes and invite students with a join code"}
           </p>
         </div>
       </div>
 
       {step === "credentials" && (
         <>
-          <div className="mb-4">
-            <p className="mb-2 text-center text-xs font-semibold uppercase tracking-widest text-[var(--app-muted)]">
-              I am a…
-            </p>
-            <div className="grid grid-cols-2 gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-bg)]/50 p-1.5">
-              <RoleSwitch
-                active={accountRole === "student"}
-                label="Student"
-                sublabel="Join Academy"
-                icon={GraduationCap}
-                accent="blue"
-                onClick={() => setAccountRole("student")}
-              />
-              <RoleSwitch
-                active={accountRole === "teacher"}
-                label="Teacher"
-                sublabel="Create classes"
-                icon={School}
-                accent="yellow"
-                onClick={() => setAccountRole("teacher")}
-              />
+          {mode === "register" ? (
+            <div className="mb-4">
+              <p className="mb-2 text-center text-xs font-semibold tracking-widest text-[var(--app-muted)] uppercase">
+                I am a…
+              </p>
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-bg)]/50 p-1.5">
+                <RoleSwitch
+                  active={accountRole === "student"}
+                  label="Student"
+                  sublabel="Join Academy"
+                  icon={GraduationCap}
+                  accent="blue"
+                  onClick={() => setAccountRole("student")}
+                />
+                <RoleSwitch
+                  active={accountRole === "teacher"}
+                  label="Teacher"
+                  sublabel="Create classes"
+                  icon={School}
+                  accent="yellow"
+                  onClick={() => setAccountRole("teacher")}
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div
             className="mb-5 grid grid-cols-2 gap-1 rounded-xl border border-[var(--app-border)] bg-[var(--app-bg)]/50 p-1"

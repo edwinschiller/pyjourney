@@ -9,7 +9,6 @@ export const dynamic = "force-dynamic"
 
 type BootstrapBody = {
   role?: BootstrapRole
-  applyRole?: boolean
 }
 
 export const POST = async (request: Request) => {
@@ -21,10 +20,14 @@ export const POST = async (request: Request) => {
   }
 
   try {
-    const role: BootstrapRole = body.role === "teacher" ? "teacher" : "student"
+    const role: BootstrapRole | undefined =
+      body.role === "teacher"
+        ? "teacher"
+        : body.role === "student"
+          ? "student"
+          : undefined
     const user = await bootstrapAppUser({
       role,
-      applyRole: Boolean(body.applyRole),
     })
 
     if (!user) {

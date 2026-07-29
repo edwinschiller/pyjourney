@@ -6,6 +6,7 @@ import { getAuth, isNeonAuthConfigured } from "@/lib/auth/server"
 import {
   assignmentRecipients,
   assignments,
+  assistantConversations,
   auditEvents,
   classrooms,
   classroomMemberships,
@@ -25,6 +26,10 @@ import {
 } from "@/lib/db"
 import { ensureAcademyMembership } from "@/lib/db/academy"
 import { withDbRetry } from "@/lib/db/retry"
+import {
+  resolveProfileRole,
+  type RegistrationRole,
+} from "@/lib/auth/role-policy"
 export type UserRole = "student" | "teacher" | "admin"
 
 export type SessionUser = {
@@ -40,9 +45,8 @@ type EnsureProfileInput = {
   id: string
   email: string
   displayName?: string | null
-  role?: Extract<UserRole, "student" | "teacher">
-  /** When true, update role on an existing profile (used for registration) */
-  applyRole?: boolean
+  /** Registration intent only — ignored when a profile already exists. */
+  role?: RegistrationRole
 }
 
 const toSessionUser = (row: typeof profiles.$inferSelect): SessionUser => ({
@@ -53,22 +57,6 @@ const toSessionUser = (row: typeof profiles.$inferSelect): SessionUser => ({
   status: row.status,
   onboarding: row.onboarding,
 })
-
-const resolveRole = (
-  input: EnsureProfileInput,
-  current?: UserRole
-): UserRole => {
-  if (current === "admin") {
-    return "admin"
-  }
-  if (input.applyRole && input.role) {
-    return input.role
-  }
-  if (current) {
-    return current
-  }
-  return input.role ?? "student"
-}
 
 /** Move FK references from an old Neon user id to the current one */
 const relinkProfileId = async (oldId: string, newId: string) => {
@@ -110,6 +98,10 @@ const relinkProfileId = async (oldId: string, newId: string) => {
     .update(savedPrograms)
     .set({ studentId: newId })
     .where(eq(savedPrograms.studentId, oldId))
+  await db
+    .update(assistantConversations)
+    .set({ studentId: newId })
+    .where(eq(assistantConversations.studentId, oldId))
   await db
     .update(exerciseAttempts)
     .set({ studentId: newId })
@@ -153,16 +145,13 @@ export const ensureProfile = async (
 
     if (existingById[0]) {
       const row = existingById[0]
-      const nextRole = resolveRole(input, row.role)
       const shouldUpdateEmail = row.email !== input.email
-      const shouldUpdateRole = nextRole !== row.role
 
-      if (shouldUpdateEmail || shouldUpdateRole) {
+      if (shouldUpdateEmail) {
         const [updated] = await db
           .update(profiles)
           .set({
-            ...(shouldUpdateEmail ? { email: input.email } : {}),
-            ...(shouldUpdateRole ? { role: nextRole } : {}),
+            email: input.email,
             updatedAt: new Date(),
           })
           .where(eq(profiles.id, input.id))
@@ -181,7 +170,10 @@ export const ensureProfile = async (
 
     if (existingByEmail[0]) {
       const old = existingByEmail[0]
-      const nextRole = resolveRole(input, old.role)
+      const nextRole = resolveProfileRole({
+        currentRole: old.role,
+        registrationRole: input.role,
+      })
 
       // Free the unique email, create row for current Neon id, move FKs, drop stale row
       await db
@@ -210,7 +202,7 @@ export const ensureProfile = async (
       return toSessionUser(created)
     }
 
-    const role = resolveRole(input)
+    const role = resolveProfileRole({ registrationRole: input.role })
 
     const [created] = await db
       .insert(profiles)
