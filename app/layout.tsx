@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 
+import { ThemeProvider } from "@/components/theme/theme-provider"
+
 import "./globals.css"
 
 const geistSans = Geist({
@@ -21,6 +23,20 @@ export const metadata: Metadata = {
   },
 }
 
+const themeInitScript = `
+(function () {
+  try {
+    var stored = localStorage.getItem("pyjourney-theme");
+    var isDark = stored !== "light";
+    document.documentElement.classList.toggle("dark", isDark);
+    document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+  } catch (e) {
+    document.documentElement.classList.add("dark");
+    document.documentElement.style.colorScheme = "dark";
+  }
+})();
+`
+
 const RootLayout = ({
   children,
 }: Readonly<{
@@ -30,8 +46,14 @@ const RootLayout = ({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col font-sans">{children}</body>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="flex min-h-full flex-col font-sans">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   )
 }

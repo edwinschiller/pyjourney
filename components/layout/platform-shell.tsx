@@ -9,6 +9,7 @@ import { PyJourneyLogo } from "@/components/brand/pyjourney-logo"
 import { AccountMenu } from "@/components/layout/account-menu"
 import { PanelResizeHandle } from "@/components/layout/panel-resize-handle"
 import { SidebarNav } from "@/components/layout/sidebar-nav"
+import { ThemeToggle } from "@/components/theme/theme-toggle"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -75,11 +76,11 @@ export const PlatformShell = ({ user, children }: PlatformShellProps) => {
 
         <div
           className={cn(
-            "flex min-h-0 min-w-0 flex-1 flex-col",
+            "relative flex min-h-0 min-w-0 flex-1 flex-col",
             isFullHeight && "h-[100dvh] max-h-[100dvh] overflow-hidden"
           )}
         >
-          <div className="flex items-center justify-between border-b border-[var(--app-border)] px-4 py-3 lg:hidden">
+          <div className="flex items-center justify-between border-b border-[var(--app-border)] bg-[var(--app-bg)] px-4 py-3 lg:hidden">
             <Sheet>
               <SheetTrigger asChild>
                 <Button size="icon" variant="outline" aria-label="Open menu">
@@ -95,7 +96,11 @@ export const PlatformShell = ({ user, children }: PlatformShellProps) => {
               </SheetContent>
             </Sheet>
             <span className="text-sm font-semibold">PyJourney</span>
-            <span className="w-9" aria-hidden />
+            <ThemeToggle />
+          </div>
+
+          <div className="hidden items-center justify-end border-b border-[var(--app-border)] bg-[var(--app-bg)] px-4 py-2 lg:flex">
+            <ThemeToggle />
           </div>
 
           <main
