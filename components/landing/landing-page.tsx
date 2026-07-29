@@ -7,6 +7,7 @@ import {
   Code2,
   GraduationCap,
   Lightbulb,
+  Play,
   Route,
   Sparkles,
   Users,
@@ -37,15 +38,15 @@ const learningFeatures: FeatureItem[] = [
   },
   {
     icon: Brain,
-    title: "Coding process analysis",
+    title: "Checked attempt evidence",
     description:
-      "Periodic snapshots capture how students code, not just the final answer.",
+      "Wrong answers, retries, and successful checks show how understanding changes — not just the final result.",
   },
   {
     icon: Lightbulb,
     title: "Staged hints",
     description:
-      "Guided help in five levels — support without spoiling the solution early.",
+      "Progressive help adds support without revealing the solution too early.",
   },
 ]
 
@@ -58,9 +59,9 @@ const teachingFeatures: FeatureItem[] = [
   },
   {
     icon: BarChart3,
-    title: "Student & class insights",
+    title: "Intervention radar",
     description:
-      "See misconceptions, hint use, and where the class needs support.",
+      "Prioritized class patterns with a concrete three-minute teaching move — not another raw dashboard.",
   },
   {
     icon: Sparkles,
@@ -172,8 +173,9 @@ export const LandingPage = () => {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
-                  <Link href="/login" aria-label="Sign in to your account">
-                    Sign in
+                  <Link href="/demo" aria-label="Watch the guided product demo">
+                    <Play className="h-4 w-4" aria-hidden />
+                    Watch 75-sec demo
                   </Link>
                 </Button>
               </div>
@@ -229,7 +231,7 @@ export const LandingPage = () => {
                 ))}
               </div>
               <p className="mt-5 text-center text-xs font-medium text-[var(--app-muted)]">
-                Mastery unlocks the next concept — assignments can override
+                Mastery unlocks the next concept — prerequisite evidence stays visible
               </p>
             </div>
           </section>
