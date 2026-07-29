@@ -4,16 +4,6 @@ Adaptive Python learning that turns a student's learning process into the next u
 
 PyJourney is a submission for the [Prometheus July AI Challenge](https://prometheus-july-ai-challenge.devpost.com/). It combines a curriculum-bounded lesson engine, in-browser Python practice, explainable adaptation, and aggregated classroom signals.
 
-## Product demo
-
-Open [`/demo`](http://localhost:3000/demo) for a short public walkthrough with synthetic data (no account required):
-
-1. A learner uses `==` where Python needs `=`.
-2. PyJourney combines the checked result, the edit pattern, and the active curriculum node.
-3. The learner receives a focused contrast instead of a full answer.
-4. The next edit becomes evidence that the intervention transferred.
-5. The teacher sees an aggregated class pattern and a concrete next teaching move.
-
 ## How it works
 
 Most coding tutors optimize for answering the current question. PyJourney optimizes for the learning loop:
@@ -70,7 +60,6 @@ Stack:
 - Teacher insights use aggregated checks and misconception counts, not raw student code.
 - AI outputs are schema-validated and constrained to the active curriculum node.
 - The core lesson flow has a deterministic fallback.
-- Demo data is fictional and explicitly labeled.
 
 ## Local setup
 
@@ -88,7 +77,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Product demo: [http://localhost:3000/demo](http://localhost:3000/demo).
+Open [http://localhost:3000](http://localhost:3000).
 
 Environment variables:
 

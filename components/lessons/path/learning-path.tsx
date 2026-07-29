@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 
 import { LessonCta } from "@/components/lessons/player/lesson-cta"
+import {
+  pathNodeConnectorClassName,
+  pathNodeMarkClassName,
+  type PathNodeVisualState,
+} from "@/components/lessons/path/path-node"
 import { startLessonForConceptAction } from "@/lib/lessons/actions"
 import type { LearningPathNode } from "@/lib/lessons/path"
 import { cn } from "@/lib/utils"
@@ -204,18 +209,12 @@ export const LearningPath = ({
                       }
                     }}
                     className={cn(
-                      "relative z-10 flex size-10 items-center justify-center rounded-full border-2 transition-colors",
+                      pathNodeMarkClassName(
+                        node.status as PathNodeVisualState
+                      ),
                       "focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] focus-visible:outline-none",
-                      node.status === "active" &&
-                        "border-[var(--brand-blue)] bg-[var(--brand-blue)] text-white",
-                      node.status === "available" &&
-                        "border-[var(--brand-blue)] bg-[var(--app-surface)] text-[var(--brand-blue)]",
-                      node.status === "completed" &&
-                        "border-emerald-600 bg-emerald-600 text-white",
-                      node.status === "locked" &&
-                        "cursor-not-allowed border-[var(--app-border)] bg-[var(--app-bg)] text-[var(--app-muted)]",
-                      node.status === "soon" &&
-                        "cursor-not-allowed border-dashed border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)]"
+                      (node.status === "locked" || node.status === "soon") &&
+                        "cursor-not-allowed"
                     )}
                   >
                     {node.status === "completed" ? (
@@ -233,9 +232,7 @@ export const LearningPath = ({
                   <div
                     className={cn(
                       "w-px flex-1 min-h-6",
-                      node.status === "completed"
-                        ? "bg-emerald-600/40"
-                        : "bg-[var(--app-border)]"
+                      pathNodeConnectorClassName(node.status === "completed")
                     )}
                     aria-hidden
                   />
