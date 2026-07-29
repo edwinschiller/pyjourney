@@ -1,4 +1,5 @@
 import { FreeCodingWorkspace } from "@/components/editor/free-coding-workspace"
+import { isAssistantAiConfigured } from "@/lib/assistant/chat"
 import { requireRole } from "@/lib/auth/session"
 import { getProgramForStudent } from "@/lib/programs"
 
@@ -18,11 +19,12 @@ const StudentCodePage = async ({ searchParams }: StudentCodePageProps) => {
     : null
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col p-4 md:p-6">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <FreeCodingWorkspace
         initialProgramId={program?.id ?? null}
         initialTitle={program?.title}
         initialCode={program?.code}
+        aiConfigured={isAssistantAiConfigured()}
       />
     </div>
   )

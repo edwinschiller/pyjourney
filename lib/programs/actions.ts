@@ -14,27 +14,24 @@ export type ProgramActionState = {
   programId?: string
 } | null
 
+export type PersistProgramInput = {
+  programId?: string | null
+  title: string
+  code: string
+}
+
 const MAX_TITLE = 80
 const MAX_CODE = 200_000
 
-const parseTitle = (raw: FormDataEntryValue | null) => {
-  if (typeof raw !== "string") {
-    return { error: "Title is required." as const }
-  }
-  const title = raw.trim()
-  if (title.length < 1) {
-    return { error: "Title is required." as const }
-  }
+const normalizeTitle = (raw: string) => {
+  const title = raw.trim() || "Untitled program"
   if (title.length > MAX_TITLE) {
     return { error: `Title must be at most ${MAX_TITLE} characters.` as const }
   }
   return { title }
 }
 
-const parseCode = (raw: FormDataEntryValue | null) => {
-  if (typeof raw !== "string") {
-    return { error: "Code is required." as const }
-  }
+const normalizeCode = (raw: string) => {
   if (raw.length > MAX_CODE) {
     return { error: "Program is too large to save." as const }
   }
@@ -46,21 +43,20 @@ const revalidateProgramPaths = () => {
   revalidatePath("/student/programs")
 }
 
-export const saveProgramAction = async (
-  _prev: ProgramActionState,
-  formData: FormData
+export const persistProgram = async (
+  studentId: string,
+  input: PersistProgramInput
 ): Promise<ProgramActionState> => {
-  const user = await requireRole(["student"])
-  const parsedTitle = parseTitle(formData.get("title"))
+  const parsedTitle = normalizeTitle(input.title)
   if ("error" in parsedTitle) {
     return { ok: false, error: parsedTitle.error }
   }
-  const parsedCode = parseCode(formData.get("code"))
+  const parsedCode = normalizeCode(input.code)
   if ("error" in parsedCode) {
     return { ok: false, error: parsedCode.error }
   }
 
-  const programId = String(formData.get("programId") ?? "").trim()
+  const programId = input.programId?.trim() || ""
 
   try {
     const db = getDb()
@@ -72,7 +68,7 @@ export const saveProgramAction = async (
         .where(
           and(
             eq(savedPrograms.id, programId),
-            eq(savedPrograms.studentId, user.id)
+            eq(savedPrograms.studentId, studentId)
           )
         )
         .limit(1)
@@ -88,7 +84,12 @@ export const saveProgramAction = async (
           code: parsedCode.code,
           updatedAt: new Date(),
         })
-        .where(eq(savedPrograms.id, programId))
+        .where(
+          and(
+            eq(savedPrograms.id, programId),
+            eq(savedPrograms.studentId, studentId)
+          )
+        )
 
       revalidateProgramPaths()
       return {
@@ -101,7 +102,7 @@ export const saveProgramAction = async (
     const [created] = await db
       .insert(savedPrograms)
       .values({
-        studentId: user.id,
+        studentId,
         title: parsedTitle.title,
         code: parsedCode.code,
         source: "ide",
@@ -115,9 +116,29 @@ export const saveProgramAction = async (
       programId: created.id,
     }
   } catch (error) {
-    console.error("saveProgramAction", error)
+    console.error("persistProgram", error)
     return { ok: false, error: "Could not save the program." }
   }
+}
+
+export const saveProgramAction = async (
+  _prev: ProgramActionState,
+  formData: FormData
+): Promise<ProgramActionState> => {
+  const user = await requireRole(["student"])
+  return persistProgram(user.id, {
+    programId: String(formData.get("programId") ?? ""),
+    title: String(formData.get("title") ?? ""),
+    code: String(formData.get("code") ?? ""),
+  })
+}
+
+/** Client-callable autosave (navigation / background flush). */
+export const autosaveProgramAction = async (
+  input: PersistProgramInput
+): Promise<ProgramActionState> => {
+  const user = await requireRole(["student"])
+  return persistProgram(user.id, input)
 }
 
 export const deleteProgramAction = async (
