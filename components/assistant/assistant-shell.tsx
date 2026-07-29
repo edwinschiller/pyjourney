@@ -5,7 +5,6 @@ import {
   History,
   Loader2,
   MessageCircle,
-  PanelRightClose,
   Plus,
   Search,
   X,
@@ -22,10 +21,13 @@ import {
 } from "react"
 import { flushSync } from "react-dom"
 
-import { PanelResizeHandle } from "@/components/layout/panel-resize-handle"
-import { useHorizontalPanelResize } from "@/hooks/use-horizontal-panel-resize"
 import {
-  ASSISTANT_PANEL,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   IDE_ASSISTANT_SCOPE,
   IDE_QUICK_PROMPTS,
   LESSON_QUICK_PROMPTS,
@@ -313,13 +315,6 @@ export const AssistantShell = ({
   aiConfigured = true,
 }: AssistantShellProps) => {
   const [open, setOpen] = useState(false)
-  const { width, resizeHandleProps } = useHorizontalPanelResize({
-    storageKey: ASSISTANT_PANEL.storageKey,
-    defaultWidth: ASSISTANT_PANEL.defaultWidth,
-    minWidth: ASSISTANT_PANEL.minWidth,
-    maxWidth: ASSISTANT_PANEL.maxWidth,
-    direction: "rtl",
-  })
 
   const welcome = aiConfigured
     ? context.scope === "ide"
@@ -336,33 +331,21 @@ export const AssistantShell = ({
     context.scope === "lesson" ? context.lessonId : IDE_ASSISTANT_SCOPE
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden lg:max-h-[100dvh] lg:flex-row">
-      <div
-        className={cn(
-          "min-h-0 min-w-0 flex-1",
-          contentLayout === "full"
-            ? "flex flex-col overflow-hidden"
-            : "overflow-y-auto transition-[padding] duration-300 ease-in-out",
-          open && "max-lg:pb-[min(52vh,520px)]"
-        )}
-      >
-        {contentLayout === "full" ? (
-          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-            {children}
-          </div>
-        ) : (
-          children
-        )}
-      </div>
+    <div
+      className={cn(
+        "relative flex min-h-0 flex-1 flex-col",
+        contentLayout === "full" ? "h-full overflow-hidden" : "overflow-y-auto"
+      )}
+    >
+      {contentLayout === "full" ? (
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </div>
+      ) : (
+        children
+      )}
 
-      <div
-        className={cn(
-          "max-lg:contents",
-          "lg:flex lg:h-[100dvh] lg:max-h-[100dvh] lg:shrink-0 lg:overflow-hidden lg:transition-[width] lg:duration-200 lg:ease-out",
-          !open && "lg:w-0"
-        )}
-        style={open ? { width } : undefined}
-      >
+      <Dialog open={open} onOpenChange={setOpen}>
         <AssistantPanel
           open={open}
           onOpenChange={setOpen}
@@ -372,10 +355,9 @@ export const AssistantShell = ({
           scopeKey={scopeKey}
           welcomeMessage={welcome}
           quickPrompts={quickPrompts}
-          resizeHandleProps={resizeHandleProps}
           aiConfigured={aiConfigured}
         />
-      </div>
+      </Dialog>
 
       {!open ? (
         <button
@@ -406,12 +388,6 @@ type AssistantPanelProps = {
   welcomeMessage: ChatMessage
   quickPrompts: readonly string[]
   aiConfigured: boolean
-  resizeHandleProps: {
-    onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
-    onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void
-    onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void
-    onPointerCancel: (event: React.PointerEvent<HTMLDivElement>) => void
-  }
 }
 
 const AssistantPanel = ({
@@ -424,7 +400,6 @@ const AssistantPanel = ({
   welcomeMessage,
   quickPrompts,
   aiConfigured,
-  resizeHandleProps,
 }: AssistantPanelProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeMessage])
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -702,30 +677,20 @@ const AssistantPanel = ({
   }
 
   return (
-    <aside
-      className={cn(
-        "relative flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden border-[var(--app-border)] bg-[var(--app-bg)]",
-        "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[min(52vh,520px)] max-lg:max-h-[min(52vh,520px)] max-lg:border-t max-lg:shadow-[0_-8px_32px_rgba(0,0,0,0.12)]",
-        "max-lg:transition-transform max-lg:duration-300 max-lg:ease-in-out",
-        open
-          ? "max-lg:translate-y-0"
-          : "max-lg:pointer-events-none max-lg:translate-y-full",
-        "lg:h-[100dvh] lg:max-h-[100dvh] lg:w-full lg:shrink-0 lg:border-l"
-      )}
-      aria-hidden={!open}
-      aria-label="Python help"
+    <DialogContent
+      showCloseButton={false}
+      className="flex h-[min(82vh,640px)] max-w-lg flex-col gap-0 overflow-hidden p-0"
+      aria-describedby={undefined}
     >
-      <PanelResizeHandle edge="left" {...resizeHandleProps} />
-
       <header className="flex shrink-0 items-center gap-2 border-b border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-3">
         <AssistantMark />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-[var(--app-fg)]">
+          <DialogTitle className="truncate text-sm font-bold">
             Python Help
-          </p>
-          <p className="truncate text-[11px] text-[var(--app-muted)]">
+          </DialogTitle>
+          <DialogDescription className="truncate text-[11px]">
             {chatTitle} · {contextLabel}
-          </p>
+          </DialogDescription>
         </div>
         <button
           type="button"
@@ -755,14 +720,14 @@ const AssistantPanel = ({
           type="button"
           onClick={() => onOpenChange(false)}
           className="rounded-lg p-2 text-[var(--app-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-fg)]"
-          aria-label="Collapse help"
+          aria-label="Close help"
         >
-          <PanelRightClose className="size-4" />
+          <X className="size-4" />
         </button>
       </header>
 
       {showHistory ? (
-        <div className="flex max-h-[140px] min-h-0 shrink-0 flex-col overflow-hidden border-b border-[var(--app-border)] bg-[var(--app-surface)]">
+        <div className="flex max-h-[140px] min-h-0 shrink-0 flex-col overflow-hidden border-b border-[var(--app-border)] bg-[var(--app-bg)]">
           <div className="flex items-center gap-2 px-3 py-2">
             <Search className="size-3.5 shrink-0 text-[var(--app-muted)]" />
             <input
@@ -842,7 +807,7 @@ const AssistantPanel = ({
         </div>
       </div>
 
-      <footer className="shrink-0 border-t border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-3">
+      <footer className="shrink-0 border-t border-[var(--app-border)] bg-[var(--app-bg)] px-3 py-3">
         {!aiConfigured ? (
           <p
             className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"
@@ -865,14 +830,14 @@ const AssistantPanel = ({
               type="button"
               disabled={busy || !aiConfigured}
               onClick={() => void sendQuestion(prompt)}
-              className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-1 text-left text-[10px] font-medium leading-snug text-[var(--app-fg)] hover:border-[var(--python-blue-light)] hover:bg-[var(--app-accent-soft)] disabled:opacity-50"
+              className="rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-left text-[10px] font-medium leading-snug text-[var(--app-fg)] hover:border-[var(--python-blue-light)] hover:bg-[var(--app-accent-soft)] disabled:opacity-50"
             >
               {prompt}
             </button>
           ))}
         </div>
 
-        <div className="flex items-end gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-bg)] p-2 transition-[border-color,box-shadow] focus-within:border-[var(--python-blue-light)] focus-within:shadow-[0_0_0_3px_var(--app-accent-soft)]">
+        <div className="flex items-end gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-2 transition-[border-color,box-shadow] focus-within:border-[var(--python-blue-light)] focus-within:shadow-[0_0_0_3px_var(--app-accent-soft)]">
           <textarea
             ref={inputRef}
             value={draft}
@@ -901,9 +866,9 @@ const AssistantPanel = ({
           </button>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-[var(--app-muted)]">
-          Enter · Shift+Enter for newline · drag left edge to resize
+          Enter to send · Shift+Enter for newline
         </p>
       </footer>
-    </aside>
+    </DialogContent>
   )
 }
