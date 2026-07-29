@@ -1,4 +1,4 @@
-import { getTopicSpec } from "@/lib/pyjo/curricula"
+import { getTopicSpec } from "@/lib/lesson-engine/curricula"
 
 /** Pick a stable struggle label for a failed topic check. */
 export const resolveMisconceptionTag = (input: {

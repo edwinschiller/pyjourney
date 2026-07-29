@@ -1,4 +1,4 @@
-import type { ConceptContentBank } from "@/lib/pyjo/bank/content/variables"
+import type { ConceptContentBank } from "@/lib/lesson-engine/bank/content/variables"
 
 const fb = (correct: string, wrong: string) => ({ correct, wrong })
 
@@ -610,7 +610,7 @@ Convert with \`int(code)\` before doing math.`,
 
 \`\`\`python
 print("ha" * 3)      # hahaha
-print("Py" + "Jo")   # PyJo
+print("Py" + "thon")  # Python
 print(len("Ada"))    # 3
 \`\`\`
 

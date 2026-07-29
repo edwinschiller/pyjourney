@@ -1,4 +1,4 @@
-import type { LessonBlueprint } from "@/lib/pyjo/curricula/types"
+import type { LessonBlueprint } from "@/lib/lesson-engine/curricula/types"
 
 /**
  * Conditions — branch with if / elif / else after Variables + Data Types.

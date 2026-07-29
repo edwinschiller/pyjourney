@@ -1,7 +1,7 @@
 import type { LessonEvent } from "@/lib/ai/schemas/lesson-blocks"
 import { getDb } from "@/lib/db"
 import { learnerEvents } from "@/lib/db/schema"
-import { getTopicSpec } from "@/lib/pyjo/curricula"
+import { getTopicSpec } from "@/lib/lesson-engine/curricula"
 
 import { bumpMisconceptionStats, bumpTopicStats } from "./rollups"
 import {

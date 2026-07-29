@@ -4,9 +4,11 @@ import { and, eq } from "drizzle-orm"
 
 import { LessonPlayer } from "@/components/lessons/player/lesson-player"
 import { Button } from "@/components/ui/button"
+import { isAssistantAiConfigured } from "@/lib/assistant/chat"
 import { requireRole } from "@/lib/auth/session"
 import { getDb } from "@/lib/db"
 import { lessons } from "@/lib/db/schema"
+import { getTopicSpec } from "@/lib/lesson-engine/curricula"
 import { startLessonForConceptAction } from "@/lib/lessons/actions"
 import { getLessonForStudent } from "@/lib/lessons/queries"
 
@@ -22,13 +24,33 @@ const StudentLessonPage = async ({ params }: LessonPageProps) => {
   const lesson = await getLessonForStudent(lessonId, user.id)
 
   if (lesson) {
+    const topicEvidence = Object.fromEntries(
+      lesson.content.topics.flatMap((topic) => {
+        const spec = getTopicSpec(lesson.conceptSlug, topic.id)
+        if (!spec) return []
+        return [
+          [
+            topic.id,
+            {
+              masteryChecks: spec.masteryChecks,
+              misconception: spec.misconceptions[0],
+            },
+          ] as const,
+        ]
+      })
+    )
+
     return (
-      <div className="flex h-full min-h-0 flex-1 flex-col p-4 md:p-6">
+      <div className="flex h-full min-h-0 flex-1 flex-col">
         <LessonPlayer
           lessonId={lesson.id}
+          conceptId={lesson.conceptId}
+          conceptSlug={lesson.conceptSlug}
           conceptTitle={lesson.conceptTitle}
           initialSession={lesson.content}
           status={lesson.status}
+          topicEvidence={topicEvidence}
+          aiConfigured={isAssistantAiConfigured()}
         />
       </div>
     )

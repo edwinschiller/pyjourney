@@ -3,9 +3,9 @@ import type {
   LessonSession,
   TopicProgress,
 } from "@/lib/ai/schemas/lesson-blocks"
-import { effectiveMasteryChecks, getTopicSpec } from "@/lib/pyjo/curricula"
+import { effectiveMasteryChecks, getTopicSpec } from "@/lib/lesson-engine/curricula"
 
-export type PyjoIntent =
+export type LessonIntent =
   | "explain"
   | "quiz"
   | "practice"
@@ -186,11 +186,11 @@ const nextCheckIntentForTopic = (
  * Decide the next coaching move from coverage + last result.
  * Failed topics always get remediate → then rebuild quiz+practice evidence.
  */
-export const choosePyjoIntent = (
+export const chooseLessonIntent = (
   session: LessonSession,
   options?: { struggleTopicIds?: string[] }
 ): {
-  intent: PyjoIntent
+  intent: LessonIntent
   topicId?: string
 } => {
   if (session.phase === "done" || session.applyPassed) {

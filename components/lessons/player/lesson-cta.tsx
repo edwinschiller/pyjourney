@@ -37,10 +37,12 @@ export const LessonCta = ({
       <>
         <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
         <span className="sr-only">Loading</span>
-        <span aria-hidden>{children}</span>
+        <span aria-hidden className="inline-flex items-center gap-1.5">
+          {children}
+        </span>
       </>
     ) : (
-      <span>{children}</span>
+      <span className="inline-flex items-center gap-1.5">{children}</span>
     )}
   </button>
 )

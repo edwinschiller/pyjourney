@@ -15,7 +15,57 @@ type LearningPathProps = {
   totalCount: number
 }
 
+const RING_SIZE = 48
+const RING_STROKE = 3.5
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+
+const TopicProgressRing = ({
+  mastered,
+  total,
+}: {
+  mastered: number
+  total: number
+}) => {
+  if (total <= 0) return null
+  const ratio = Math.max(0, Math.min(1, mastered / total))
+  const offset = RING_CIRCUMFERENCE * (1 - ratio)
+
+  return (
+    <svg
+      className="pointer-events-none absolute top-1/2 left-1/2 size-12 -translate-x-1/2 -translate-y-1/2 -rotate-90"
+      viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+      aria-hidden
+    >
+      <circle
+        cx={RING_SIZE / 2}
+        cy={RING_SIZE / 2}
+        r={RING_RADIUS}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={RING_STROKE}
+        className="text-emerald-500/25"
+      />
+      <circle
+        cx={RING_SIZE / 2}
+        cy={RING_SIZE / 2}
+        r={RING_RADIUS}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={RING_STROKE}
+        strokeLinecap="round"
+        strokeDasharray={RING_CIRCUMFERENCE}
+        strokeDashoffset={offset}
+        className="text-emerald-500 transition-[stroke-dashoffset] duration-500 ease-out"
+      />
+    </svg>
+  )
+}
+
 const statusLabel = (node: LearningPathNode) => {
+  if (node.inProgress && node.topicsTotal > 0) {
+    return `In progress · ${node.topicsMastered}/${node.topicsTotal} topics`
+  }
   switch (node.status) {
     case "locked":
       return "Locked"
@@ -118,53 +168,67 @@ export const LearningPath = ({
             node.status === "completed"
           const isLast = index === nodes.length - 1
           const ctaLabel = node.status === "completed" ? "Review" : "Continue"
+          const showTopicRing =
+            node.inProgress &&
+            node.topicsTotal > 0 &&
+            node.status !== "completed"
 
           return (
             <li key={node.conceptId} className="relative flex gap-4">
               <div className="flex w-10 shrink-0 flex-col items-center">
-                <button
-                  type="button"
-                  tabIndex={canOpen ? 0 : -1}
-                  disabled={!canOpen || isBusy}
-                  aria-label={
-                    node.status === "locked"
-                      ? `${node.title}, locked`
-                      : node.status === "soon"
-                        ? `${node.title}, coming soon`
-                        : `Open ${node.title}`
-                  }
-                  onClick={() => handleOpen(node)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault()
-                      handleOpen(node)
+                <div className="relative flex size-10 items-center justify-center">
+                  {showTopicRing ? (
+                    <TopicProgressRing
+                      mastered={node.topicsMastered}
+                      total={node.topicsTotal}
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    tabIndex={canOpen ? 0 : -1}
+                    disabled={!canOpen || isBusy}
+                    aria-label={
+                      node.status === "locked"
+                        ? `${node.title}, locked`
+                        : node.status === "soon"
+                          ? `${node.title}, coming soon`
+                          : showTopicRing
+                            ? `Open ${node.title}, ${node.topicsMastered} of ${node.topicsTotal} topics done`
+                            : `Open ${node.title}`
                     }
-                  }}
-                  className={cn(
-                    "relative z-10 flex size-10 items-center justify-center rounded-full border-2 transition-colors",
-                    "focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] focus-visible:outline-none",
-                    node.status === "active" &&
-                      "border-[var(--brand-blue)] bg-[var(--brand-blue)] text-white",
-                    node.status === "available" &&
-                      "border-[var(--brand-blue)] bg-[var(--app-surface)] text-[var(--brand-blue)]",
-                    node.status === "completed" &&
-                      "border-emerald-600 bg-emerald-600 text-white",
-                    node.status === "locked" &&
-                      "cursor-not-allowed border-[var(--app-border)] bg-[var(--app-bg)] text-[var(--app-muted)]",
-                    node.status === "soon" &&
-                      "cursor-not-allowed border-dashed border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)]"
-                  )}
-                >
-                  {node.status === "completed" ? (
-                    <Check className="size-4 stroke-[2.5]" aria-hidden />
-                  ) : node.status === "locked" ? (
-                    <Lock className="size-3.5" aria-hidden />
-                  ) : node.status === "soon" ? (
-                    <Sparkles className="size-3.5" aria-hidden />
-                  ) : (
-                    <span className="text-sm font-semibold">{index + 1}</span>
-                  )}
-                </button>
+                    onClick={() => handleOpen(node)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        handleOpen(node)
+                      }
+                    }}
+                    className={cn(
+                      "relative z-10 flex size-10 items-center justify-center rounded-full border-2 transition-colors",
+                      "focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] focus-visible:outline-none",
+                      node.status === "active" &&
+                        "border-[var(--brand-blue)] bg-[var(--brand-blue)] text-white",
+                      node.status === "available" &&
+                        "border-[var(--brand-blue)] bg-[var(--app-surface)] text-[var(--brand-blue)]",
+                      node.status === "completed" &&
+                        "border-emerald-600 bg-emerald-600 text-white",
+                      node.status === "locked" &&
+                        "cursor-not-allowed border-[var(--app-border)] bg-[var(--app-bg)] text-[var(--app-muted)]",
+                      node.status === "soon" &&
+                        "cursor-not-allowed border-dashed border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-muted)]"
+                    )}
+                  >
+                    {node.status === "completed" ? (
+                      <Check className="size-4 stroke-[2.5]" aria-hidden />
+                    ) : node.status === "locked" ? (
+                      <Lock className="size-3.5" aria-hidden />
+                    ) : node.status === "soon" ? (
+                      <Sparkles className="size-3.5" aria-hidden />
+                    ) : (
+                      <span className="text-sm font-semibold">{index + 1}</span>
+                    )}
+                  </button>
+                </div>
                 {!isLast ? (
                   <div
                     className={cn(

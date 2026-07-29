@@ -6,18 +6,27 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-  type ReactNode,
 } from "react"
 
 import { LessonCta } from "@/components/lessons/player/lesson-cta"
 import { StepFeedback } from "@/components/lessons/player/step-feedback"
+import { SimpleMarkdown } from "@/components/markdown/simple-markdown"
 import { Input } from "@/components/ui/input"
 import type { LessonBlock } from "@/lib/ai/schemas/lesson-blocks"
 import {
   isStepComplete,
   type LessonStepState,
 } from "@/lib/lessons/validate-step"
+import { shuffleWithSeed } from "@/lib/lessons/quiz-quality"
 import { cn } from "@/lib/utils"
+
+const orderedQuizChoices = (
+  block: Extract<LessonBlock, { kind: "quiz" }>
+) =>
+  shuffleWithSeed(
+    block.choices,
+    `${block.id}:${block.correctId}:${block.choices.map((choice) => choice.id).join(",")}`
+  )
 
 export type BlockViewHandle = {
   check: () => boolean
@@ -41,87 +50,6 @@ type BlockViewProps = {
   onActionStateChange?: (state: BlockActionState) => void
   /** Hide inline Check — parent footer owns the CTA. */
   hideInlineCheck?: boolean
-}
-
-const renderInline = (text: string, keyPrefix: string) => {
-  const nodes: ReactNode[] = []
-  // bold, inline code, then italic — order matters
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-  let partIndex = 0
-
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(text.slice(lastIndex, match.index))
-    }
-    const token = match[0]
-    const key = `${keyPrefix}-${partIndex++}`
-    if (token.startsWith("**") && token.endsWith("**")) {
-      nodes.push(
-        <strong key={key} className="font-semibold text-[var(--app-fg)]">
-          {token.slice(2, -2)}
-        </strong>
-      )
-    } else if (token.startsWith("`") && token.endsWith("`")) {
-      nodes.push(
-        <code
-          key={key}
-          className="rounded-md bg-[var(--app-bg)] px-1.5 py-0.5 font-mono text-[0.9em] text-[var(--brand-navy)] dark:text-[var(--app-fg)]"
-        >
-          {token.slice(1, -1)}
-        </code>
-      )
-    } else if (token.startsWith("*") && token.endsWith("*")) {
-      nodes.push(
-        <em key={key} className="italic">
-          {token.slice(1, -1)}
-        </em>
-      )
-    } else {
-      nodes.push(token)
-    }
-    lastIndex = match.index + token.length
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex))
-  }
-
-  return nodes.length > 0 ? nodes : text
-}
-
-const renderBody = (body: string) => {
-  const parts = body.split(/```(?:python)?\n?([\s\S]*?)```/g)
-  return parts.map((part, index) => {
-    if (index % 2 === 1) {
-      return (
-        <pre
-          key={index}
-          className="my-3 overflow-x-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-bg)] p-4 font-mono text-sm leading-relaxed shadow-inner"
-        >
-          {part.trim()}
-        </pre>
-      )
-    }
-
-    const trimmed = part.trim()
-    if (!trimmed) return null
-
-    const paragraphs = trimmed.split(/\n{2,}/)
-    return (
-      <div key={index} className="flex flex-col gap-3">
-        {paragraphs.map((paragraph, paragraphIndex) => (
-          <p
-            key={`${index}-p-${paragraphIndex}`}
-            className="whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--app-muted)]"
-          >
-            {renderInline(paragraph, `${index}-${paragraphIndex}`)}
-          </p>
-        ))}
-      </div>
-    )
-  })
 }
 
 export const BlockView = forwardRef<BlockViewHandle, BlockViewProps>(
@@ -225,7 +153,7 @@ export const BlockView = forwardRef<BlockViewHandle, BlockViewProps>(
         const state = stepStateRef.current
         if (currentBlock.kind !== "quiz") return
         if (state.choiceSubmitted) return
-        const choice = currentBlock.choices[index]
+        const choice = orderedQuizChoices(currentBlock)[index]
         if (!choice) return
         setFeedback(null)
         onStepStateChange({ ...state, selectedChoiceId: choice.id })
@@ -319,20 +247,21 @@ export const BlockView = forwardRef<BlockViewHandle, BlockViewProps>(
             </h2>
           ) : null}
           <div className="border-l-2 border-[var(--brand-blue)]/40 pl-4">
-            {renderBody(block.body)}
+            <SimpleMarkdown content={block.body} />
           </div>
         </article>
       )
     }
 
     if (block.kind === "quiz") {
+      const choices = orderedQuizChoices(block)
       return (
         <article className="flex flex-col gap-4">
           <h2 className="text-xl font-black tracking-tight text-[var(--brand-navy)] dark:text-[var(--app-fg)] sm:text-2xl">
             {block.prompt}
           </h2>
           {block.code ? (
-            <pre className="overflow-x-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-bg)] p-4 font-mono text-sm leading-relaxed">
+            <pre className="overflow-x-auto rounded-2xl border border-[var(--app-border)] bg-[var(--app-bg)] p-4 font-mono text-sm leading-relaxed whitespace-pre">
               {block.code}
             </pre>
           ) : null}
@@ -341,7 +270,7 @@ export const BlockView = forwardRef<BlockViewHandle, BlockViewProps>(
             role="listbox"
             aria-label="Answer choices"
           >
-            {block.choices.map((choice, index) => {
+            {choices.map((choice, index) => {
               const isSelected = stepState.selectedChoiceId === choice.id
               const showResult = stepState.choiceSubmitted && isSelected
               const isCorrect = choice.id === block.correctId
@@ -475,21 +404,32 @@ export const BlockView = forwardRef<BlockViewHandle, BlockViewProps>(
         )
       }
 
+      const requirementLines =
+        (block.lines ?? []).filter((line) => line.trim()).length > 0
+          ? (block.lines ?? []).filter((line) => line.trim())
+          : (block.mustContain ?? []).map((item) => `Include: \`${item}\``)
+
       return (
         <article className="flex flex-col gap-4">
           <h2 className="text-xl font-black tracking-tight text-[var(--brand-navy)] dark:text-[var(--app-fg)] sm:text-2xl">
             {block.prompt}
           </h2>
-          <ul className="space-y-1.5 text-sm text-[var(--app-muted)]">
-            {(block.lines ?? []).map((line) => (
-              <li key={line} className="flex gap-2">
-                <span className="text-[var(--brand-blue)]" aria-hidden>
-                  •
-                </span>
-                {line}
-              </li>
-            ))}
-          </ul>
+          {requirementLines.length > 0 ? (
+            <ul className="space-y-1.5 text-sm text-[var(--app-muted)]">
+              {requirementLines.map((line) => (
+                <li key={line} className="flex gap-2">
+                  <span className="text-[var(--brand-blue)]" aria-hidden>
+                    •
+                  </span>
+                  {line}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-[var(--app-muted)]" role="status">
+              Edit the starter code to match the task above.
+            </p>
+          )}
           <textarea
             value={stepState.miniEditCode}
             onChange={(event) =>
@@ -533,7 +473,11 @@ export const BlockView = forwardRef<BlockViewHandle, BlockViewProps>(
           <h2 className="text-3xl font-black tracking-tight text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
             {block.title}
           </h2>
-          <p className="max-w-md text-[var(--app-muted)]">{block.body}</p>
+          <SimpleMarkdown
+            content={block.body}
+            className="max-w-md"
+            proseClassName="text-center"
+          />
         </article>
       )
     }

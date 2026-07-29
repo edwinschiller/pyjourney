@@ -1,4 +1,4 @@
-import type { LessonBlueprint } from "@/lib/pyjo/curricula/types"
+import type { LessonBlueprint } from "@/lib/lesson-engine/curricula/types"
 
 /**
  * Lists — ordered collections after Data types.

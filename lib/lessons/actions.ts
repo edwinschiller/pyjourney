@@ -19,6 +19,7 @@ import {
   listCompletedConceptIds,
   updateLessonContent,
 } from "@/lib/lessons/queries"
+import { completeAssignmentsForConcept } from "@/lib/assignments/queries"
 import {
   PREREQUISITE_MET_SCORE,
   isConceptUnlocked,
@@ -38,10 +39,16 @@ import {
 } from "@/lib/memory"
 import {
   createInitialSessionForSlug,
+  healSessionBlocks,
   reviewApplySubmission,
-  runPyjoNext,
-} from "@/lib/pyjo/director"
-import { applyEventToCoverage } from "@/lib/pyjo/policy"
+  runLessonNext,
+} from "@/lib/lesson-engine/director"
+import { applyEventToCoverage } from "@/lib/lesson-engine/policy"
+import {
+  assertLessonCompletable,
+  LessonIntegrityError,
+  verifyLessonEvent,
+} from "@/lib/lessons/verify-event"
 
 export type StartLessonState = {
   ok: boolean
@@ -77,13 +84,21 @@ export type ReviewApplyState = {
 
 const SESSION_VERSION = 4
 
-const revalidateLesson = (lessonId: string) => {
-  revalidatePath("/student/learn")
+const revalidateLesson = (
+  lessonId: string,
+  scope: "light" | "progress" | "complete" = "progress"
+) => {
   revalidatePath(`/student/learn/${lessonId}`)
+  if (scope === "light") return
+
+  revalidatePath("/student/learn")
   revalidatePath("/student")
   revalidatePath("/student/insights")
-  revalidatePath("/teacher")
-  revalidatePath("/teacher/classes")
+
+  if (scope === "complete") {
+    revalidatePath("/teacher")
+    revalidatePath("/teacher/classes")
+  }
 }
 
 const isV4Session = (content: unknown) => {
@@ -200,7 +215,7 @@ export const startLessonForConceptAction = async (
       await abandonActiveLessonsForConcept(user.id, concept.id)
     }
 
-    const bootstrapped = await runPyjoNext({
+    const bootstrapped = await runLessonNext({
       session: seed,
       bootstrap: true,
     })
@@ -219,7 +234,7 @@ export const startLessonForConceptAction = async (
     const lessonId = inserted[0]?.id
     if (!lessonId) return { ok: false, error: "Could not create lesson." }
 
-    revalidateLesson(lessonId)
+    revalidateLesson(lessonId, "progress")
     return {
       ok: true,
       lessonId,
@@ -269,26 +284,35 @@ export const syncLessonProgressAction = async (
       }
     }
 
+    const blockCountBeforeHeal = session.blocks.length
+    session = healSessionBlocks(session)
+    const droppedBrokenBlocks = session.blocks.length < blockCountBeforeHeal
+
     let coachSpeak = session.lastCoachSpeak
     let source: "openai" | "rules" | undefined
 
-    const event = input.event
+    let event = input.event
       ? lessonEventSchema.parse(input.event)
       : undefined
+
+    if (event) {
+      event = verifyLessonEvent(session, event)
+    }
 
     const atEnd = session.cursor >= Math.max(session.blocks.length - 1, 0)
     const onComplete = session.blocks[session.cursor]?.kind === "complete"
     const needsNext =
       Boolean(input.requestNext) ||
       Boolean(event && !event.passed) ||
-      Boolean(event?.passed && atEnd && !onComplete)
+      Boolean(event?.passed && atEnd && !onComplete) ||
+      droppedBrokenBlocks
 
     const struggleTopicIds = needsNext
       ? await listStruggleTopicIdsForStudent(user.id, lesson.conceptId)
       : []
 
     if (needsNext) {
-      const result = await runPyjoNext({
+      const result = await runLessonNext({
         session,
         event,
         bootstrap: false,
@@ -317,6 +341,7 @@ export const syncLessonProgressAction = async (
 
     let completed = false
     if (input.completeLesson) {
+      assertLessonCompletable(session)
       await updateLessonContent(lessonId, user.id, session, "completed")
       await applyMasteryEvent(user.id, lesson.conceptId, {
         type: "test_pass",
@@ -340,14 +365,21 @@ export const syncLessonProgressAction = async (
         conceptId: lesson.conceptId,
         lessonId,
       })
+      await completeAssignmentsForConcept(user.id, lesson.conceptId)
       completed = true
     } else {
       await updateLessonContent(lessonId, user.id, session)
     }
 
-    revalidateLesson(lessonId)
+    revalidateLesson(
+      lessonId,
+      completed ? "complete" : event ? "progress" : "light"
+    )
     return { ok: true, session, coachSpeak, completed, source }
   } catch (error) {
+    if (error instanceof LessonIntegrityError) {
+      return { ok: false, error: error.message }
+    }
     console.error("syncLessonProgressAction", error)
     return { ok: false, error: "Could not sync lesson." }
   }
@@ -408,7 +440,7 @@ export const reviewApplyAction = async (
       detail: review.speak,
     })
 
-    const next = await runPyjoNext({
+    const next = await runLessonNext({
       session,
       event,
       bootstrap: false,
@@ -425,7 +457,7 @@ export const reviewApplyAction = async (
       criteriaResults: review.criteriaResults,
     })
 
-    revalidateLesson(lessonId)
+    revalidateLesson(lessonId, review.passed ? "progress" : "light")
 
     return {
       ok: true,

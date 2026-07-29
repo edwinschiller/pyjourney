@@ -1,4 +1,4 @@
-import type { LessonBlueprint } from "@/lib/pyjo/curricula/types"
+import type { LessonBlueprint } from "@/lib/lesson-engine/curricula/types"
 
 /**
  * Loops — repeat with for/while, range, accumulate, break/continue at intro level.

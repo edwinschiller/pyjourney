@@ -1,35 +1,40 @@
 import { asc, eq } from "drizzle-orm"
+import { cache } from "react"
 
 import { getDb } from "@/lib/db"
 import { conceptPrerequisites, concepts } from "@/lib/db/schema"
 
 import type { ConceptNode, CurriculumGraph, PrerequisiteEdge } from "./types"
 
-export const loadCurriculumGraph = async (): Promise<CurriculumGraph> => {
+const loadCurriculumGraphUncached = async (): Promise<CurriculumGraph> => {
   const db = getDb()
 
-  const conceptRows = await db
-    .select({
-      id: concepts.id,
-      slug: concepts.slug,
-      title: concepts.title,
-      description: concepts.description,
-      orderIndex: concepts.orderIndex,
-      isActive: concepts.isActive,
-    })
-    .from(concepts)
-    .where(eq(concepts.isActive, true))
-    .orderBy(asc(concepts.orderIndex), asc(concepts.title))
-
-  const edgeRows = await db
-    .select({
-      conceptId: conceptPrerequisites.conceptId,
-      prerequisiteId: conceptPrerequisites.prerequisiteId,
-    })
-    .from(conceptPrerequisites)
+  const [conceptRows, edgeRows] = await Promise.all([
+    db
+      .select({
+        id: concepts.id,
+        slug: concepts.slug,
+        title: concepts.title,
+        description: concepts.description,
+        orderIndex: concepts.orderIndex,
+        isActive: concepts.isActive,
+      })
+      .from(concepts)
+      .where(eq(concepts.isActive, true))
+      .orderBy(asc(concepts.orderIndex), asc(concepts.title)),
+    db
+      .select({
+        conceptId: conceptPrerequisites.conceptId,
+        prerequisiteId: conceptPrerequisites.prerequisiteId,
+      })
+      .from(conceptPrerequisites),
+  ])
 
   return buildCurriculumGraph(conceptRows, edgeRows)
 }
+
+/** Request-scoped cache — avoids duplicate graph loads in one render. */
+export const loadCurriculumGraph = cache(loadCurriculumGraphUncached)
 
 export const buildCurriculumGraph = (
   conceptRows: ConceptNode[],

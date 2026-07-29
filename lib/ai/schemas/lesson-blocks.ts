@@ -1,5 +1,8 @@
 import { z } from "zod"
 
+import { assertUsableQuizBlock, withShuffledQuizChoices } from "@/lib/lessons/quiz-quality"
+import { expandCollapsedPython, normalizeMarkdownFences } from "@/lib/markdown/fences"
+
 export const stepFeedbackSchema = z.object({
   correct: z.string().min(1),
   wrong: z.string().min(1),
@@ -160,20 +163,205 @@ export const sessionTurnCount = (session: {
   pyjoTurns?: number
 }) => session.turnCount ?? session.pyjoTurns ?? 0
 
-export const pyjoNextOutputSchema = z.object({
+export const lessonNextIntentSchema = z.enum([
+  "explain",
+  "quiz",
+  "practice",
+  "remediate",
+  "apply",
+  "complete",
+])
+
+/**
+ * Flat block shape for OpenAI structured output.
+ * Responses API rejects `oneOf` (Zod discriminatedUnion) in array items,
+ * and requires every property in `required` — use nullables instead of optional.
+ */
+export const lessonBlockAiSchema = z.object({
+  kind: z.enum(["explain", "quiz", "practice", "apply", "complete"]),
+  id: z.string().min(1),
+  topicId: z.string().nullable(),
+  fingerprint: z.string().nullable(),
+  title: z.string().nullable(),
+  body: z.string().nullable(),
+  prompt: z.string().nullable(),
+  code: z.string().nullable(),
+  choices: z.array(choiceOptionSchema).nullable(),
+  correctId: z.string().nullable(),
+  feedback: stepFeedbackSchema.nullable(),
+  difficulty: z.enum(["easy", "hard"]).nullable(),
+  mode: z.enum(["fillBlank", "miniEdit"]).nullable(),
+  template: z.string().nullable(),
+  answers: z.array(z.string()).nullable(),
+  lines: z.array(z.string()).nullable(),
+  starterCode: z.string().nullable(),
+  mustContain: z.array(z.string()).nullable(),
+  mustNotContain: z.array(z.string()).nullable(),
+  mustMatchAny: z.array(z.string()).nullable(),
+  placeholder: z.string().nullable(),
+  brief: z.string().nullable(),
+  criteria: z.array(z.string().min(1)).nullable(),
+})
+
+export const lessonNextAiOutputSchema = z.object({
   speak: z.string().min(1),
-  intent: z.enum([
-    "explain",
-    "quiz",
-    "practice",
-    "remediate",
-    "apply",
-    "complete",
-  ]),
+  intent: lessonNextIntentSchema,
+  topicId: z.string().nullable(),
+  reason: z.string().min(1),
+  blocks: z.array(lessonBlockAiSchema).min(1).max(3),
+})
+
+export const lessonNextOutputSchema = z.object({
+  speak: z.string().min(1),
+  intent: lessonNextIntentSchema,
   topicId: z.string().optional(),
   reason: z.string().min(1),
   blocks: z.array(lessonBlockSchema).min(1).max(3),
 })
+
+export type LessonBlock = z.infer<typeof lessonBlockSchema>
+export type LessonEvent = z.infer<typeof lessonEventSchema>
+export type TopicProgress = z.infer<typeof topicProgressSchema>
+export type LessonSession = z.infer<typeof lessonSessionSchema>
+export type LessonNextOutput = z.infer<typeof lessonNextOutputSchema>
+
+const nullToUndefined = <T,>(value: T | null | undefined): T | undefined =>
+  value == null ? undefined : value
+
+export const coerceLessonBlock = (
+  block: z.infer<typeof lessonBlockAiSchema>
+): LessonBlock => {
+  const base = {
+    id: block.id,
+    topicId: nullToUndefined(block.topicId),
+    fingerprint: nullToUndefined(block.fingerprint),
+  }
+
+  switch (block.kind) {
+    case "explain":
+      return explainBlockSchema.parse({
+        ...base,
+        kind: "explain",
+        title: nullToUndefined(block.title),
+        body: normalizeMarkdownFences(block.body ?? ""),
+      })
+    case "quiz": {
+      const prompt = (block.prompt ?? "").trim()
+      const choices = block.choices ?? []
+      const correctId = block.correctId ?? ""
+      const rawCode = nullToUndefined(block.code)
+      assertUsableQuizBlock({
+        prompt,
+        choices,
+        correctId,
+        code: rawCode,
+      })
+      return withShuffledQuizChoices(
+        quizBlockSchema.parse({
+          ...base,
+          kind: "quiz",
+          prompt,
+          code: rawCode ? expandCollapsedPython(rawCode) : undefined,
+          choices,
+          correctId,
+          feedback: block.feedback ?? {
+            correct: "Correct!",
+            wrong: "Not quite — try again.",
+          },
+          difficulty: block.difficulty ?? "easy",
+        })
+      )
+    }
+    case "practice": {
+      const mode = block.mode ?? "miniEdit"
+      const prompt = (block.prompt ?? "").trim()
+      if (!prompt) {
+        throw new Error("Practice block missing prompt")
+      }
+      if (mode === "fillBlank") {
+        if (!(block.template ?? "").includes("___")) {
+          throw new Error("fillBlank practice needs a template with ___")
+        }
+        if (!(block.answers ?? []).length) {
+          throw new Error("fillBlank practice needs answers")
+        }
+      } else {
+        const lines = (block.lines ?? []).map((line) => line.trim()).filter(Boolean)
+        const mustContain = (block.mustContain ?? [])
+          .map((item) => item.trim())
+          .filter(Boolean)
+        if (lines.length === 0 && mustContain.length === 0) {
+          throw new Error(
+            "miniEdit practice needs requirement lines or mustContain"
+          )
+        }
+        if (lines.length > 4) {
+          throw new Error("miniEdit practice is too large (max 4 requirement lines)")
+        }
+        if (/accomplishes the following|write a (complete )?program/i.test(prompt)) {
+          throw new Error("miniEdit practice looks like a full apply challenge")
+        }
+        const starterLines = (block.starterCode ?? "").split("\n").length
+        if (starterLines > 12) {
+          throw new Error("miniEdit starterCode is too long for practice")
+        }
+      }
+      return practiceBlockSchema.parse({
+        ...base,
+        kind: "practice",
+        prompt,
+        mode,
+        template: nullToUndefined(block.template),
+        answers: nullToUndefined(block.answers),
+        lines: nullToUndefined(block.lines)?.filter((line) => line.trim()),
+        starterCode: nullToUndefined(block.starterCode),
+        mustContain: nullToUndefined(block.mustContain),
+        mustNotContain: nullToUndefined(block.mustNotContain),
+        mustMatchAny: nullToUndefined(block.mustMatchAny),
+        feedback: block.feedback ?? {
+          correct: "Nice work!",
+          wrong: "Check the requirements and try again.",
+        },
+        placeholder: nullToUndefined(block.placeholder),
+      })
+    }
+    case "apply": {
+      const brief = (block.brief ?? "").trim()
+      const criteria = (block.criteria ?? [])
+        .map((item) => item.trim())
+        .filter(Boolean)
+      if (!brief || criteria.length < 2) {
+        throw new Error("Apply block needs brief and at least 2 criteria")
+      }
+      return applyBlockSchema.parse({
+        ...base,
+        kind: "apply",
+        title: (block.title ?? "Apply").trim() || "Apply",
+        brief,
+        criteria,
+        starterCode: block.starterCode ?? "",
+      })
+    }
+    case "complete":
+      return completeBlockSchema.parse({
+        ...base,
+        kind: "complete",
+        title: block.title ?? "Complete",
+        body: normalizeMarkdownFences(block.body ?? ""),
+      })
+  }
+}
+
+export const coerceLessonNextOutput = (
+  raw: z.infer<typeof lessonNextAiOutputSchema>
+): LessonNextOutput =>
+  lessonNextOutputSchema.parse({
+    speak: raw.speak,
+    intent: raw.intent,
+    topicId: nullToUndefined(raw.topicId),
+    reason: raw.reason,
+    blocks: raw.blocks.map(coerceLessonBlock),
+  })
 
 export const applyReviewSchema = z.object({
   passed: z.boolean(),
@@ -187,12 +375,32 @@ export const applyReviewSchema = z.object({
   ),
 })
 
-export type LessonBlock = z.infer<typeof lessonBlockSchema>
-export type LessonEvent = z.infer<typeof lessonEventSchema>
-export type TopicProgress = z.infer<typeof topicProgressSchema>
-export type LessonSession = z.infer<typeof lessonSessionSchema>
-export type PyjoNextOutput = z.infer<typeof pyjoNextOutputSchema>
+/** OpenAI-safe apply review (nullable instead of optional). */
+export const applyReviewAiSchema = z.object({
+  passed: z.boolean(),
+  speak: z.string().min(1),
+  criteriaResults: z.array(
+    z.object({
+      criterion: z.string(),
+      met: z.boolean(),
+      note: z.string().nullable(),
+    })
+  ),
+})
+
 export type ApplyReview = z.infer<typeof applyReviewSchema>
+
+export const coerceApplyReview = (
+  raw: z.infer<typeof applyReviewAiSchema>
+): ApplyReview =>
+  applyReviewSchema.parse({
+    ...raw,
+    criteriaResults: raw.criteriaResults.map((row) => ({
+      criterion: row.criterion,
+      met: row.met,
+      note: row.note ?? undefined,
+    })),
+  })
 
 export const parseLessonSession = (value: unknown): LessonSession =>
   lessonSessionSchema.parse(value)

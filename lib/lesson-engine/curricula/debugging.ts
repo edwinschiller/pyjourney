@@ -1,4 +1,4 @@
-import type { LessonBlueprint } from "@/lib/pyjo/curricula/types"
+import type { LessonBlueprint } from "@/lib/lesson-engine/curricula/types"
 
 /**
  * Debugging — read tracebacks, classify common errors, print-debug, fix systematically.

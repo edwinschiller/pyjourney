@@ -1,15 +1,16 @@
 import type {
   LessonBlock,
   LessonSession,
-  PyjoNextOutput,
+  LessonNextOutput,
 } from "@/lib/ai/schemas/lesson-blocks"
-import { getTopicContent } from "@/lib/pyjo/bank/content"
+import { getTopicContent } from "@/lib/lesson-engine/bank/content"
 import {
   getBlueprint,
   getTopicSpec,
   toSessionTopics,
-} from "@/lib/pyjo/curricula"
-import type { PyjoIntent } from "@/lib/pyjo/policy"
+} from "@/lib/lesson-engine/curricula"
+import type { LessonIntent } from "@/lib/lesson-engine/policy"
+import { withShuffledQuizChoices } from "@/lib/lessons/quiz-quality"
 
 export type {
   ConceptContentBank,
@@ -17,12 +18,12 @@ export type {
   PracticeVariant,
   QuizVariant,
   TopicContentPack,
-} from "@/lib/pyjo/bank/content/variables"
+} from "@/lib/lesson-engine/bank/content/variables"
 
 let seq = 0
 const nid = (prefix: string) => {
   seq += 1
-  return `pyjo-${prefix}-${Date.now().toString(36)}-${seq}`
+  return `lesson-${prefix}-${Date.now().toString(36)}-${seq}`
 }
 
 const fingerprint = (parts: string[]) =>
@@ -95,10 +96,10 @@ const fallbackExplain = (topicId: string, goal: string) => ({
 })
 
 export const buildBlocksForIntent = (
-  intent: PyjoIntent,
+  intent: LessonIntent,
   session: LessonSession,
   topicId?: string
-): PyjoNextOutput => {
+): LessonNextOutput => {
   const used = new Set(session.usedFingerprints)
   const topic =
     session.topics.find((item) => item.id === topicId) ??
@@ -194,18 +195,20 @@ export const buildBlocksForIntent = (
     if (!picked) {
       return buildBlocksForIntent("practice", session, topic.id)
     }
-    blocks.push({
-      id: nid("quiz"),
-      kind: "quiz",
-      topicId: topic.id,
-      fingerprint: picked.fingerprint,
-      prompt: picked.prompt,
-      code: picked.code,
-      choices: picked.choices,
-      correctId: picked.correctId,
-      feedback: picked.feedback,
-      difficulty: picked.difficulty,
-    })
+    blocks.push(
+      withShuffledQuizChoices({
+        id: nid("quiz"),
+        kind: "quiz" as const,
+        topicId: topic.id,
+        fingerprint: picked.fingerprint,
+        prompt: picked.prompt,
+        code: picked.code,
+        choices: picked.choices,
+        correctId: picked.correctId,
+        feedback: picked.feedback,
+        difficulty: picked.difficulty,
+      })
+    )
   }
 
   if (intent === "practice" && topic) {

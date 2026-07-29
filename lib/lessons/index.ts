@@ -10,4 +10,4 @@ export {
   type LessonBlock,
   type LessonSession,
 } from "./schema"
-export { runPyjoNext, hasPyjoLessonForSlug } from "@/lib/pyjo/director"
+export { runLessonNext, hasLessonForSlug } from "@/lib/lesson-engine/director"

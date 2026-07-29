@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic"
 const StudentLearnPage = async () => {
   const user = await requireRole(["student"])
   const masteryMap = await getMasteryScoreMapForStudent(user.id)
-  const [activeByConcept, completedIds] = await Promise.all([
+  const [activeLessons, completedIds] = await Promise.all([
     listActiveLessonsByConcept(user.id),
     listCompletedConceptIds(user.id),
   ])
@@ -23,7 +23,8 @@ const StudentLearnPage = async () => {
 
   const path = await buildLearningPath({
     masteryByConceptId: masteryMap,
-    activeLessonByConceptId: activeByConcept,
+    activeLessonByConceptId: activeLessons.byConceptId,
+    topicProgressByConceptId: activeLessons.topicProgressByConcept,
     completedConceptIds: completedIds,
     nextConceptId: next?.concept.id ?? null,
   })

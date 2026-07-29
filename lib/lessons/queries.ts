@@ -87,16 +87,38 @@ export const listActiveLessonsByConcept = async (studentId: string) => {
     .orderBy(desc(lessons.createdAt))
 
   const map = new Map<string, string>()
+  const topicProgressByConcept = new Map<
+    string,
+    { topicsMastered: number; topicsTotal: number }
+  >()
+
   for (const row of rows) {
     if (map.has(row.conceptId)) continue
-    try {
-      parseLessonSession(row.content)
-      map.set(row.conceptId, row.id)
-    } catch {
-      // skip legacy
+    const progress = readTopicProgressSummary(row.content)
+    if (!progress) continue
+    map.set(row.conceptId, row.id)
+    topicProgressByConcept.set(row.conceptId, progress)
+  }
+  return { byConceptId: map, topicProgressByConcept }
+}
+
+/** Lightweight topic counts without full session parse/heal. */
+const readTopicProgressSummary = (content: unknown) => {
+  if (!content || typeof content !== "object" || Array.isArray(content)) {
+    return null
+  }
+  const topics = (content as { topics?: unknown }).topics
+  if (!Array.isArray(topics)) return null
+
+  let topicsMastered = 0
+  for (const topic of topics) {
+    if (!topic || typeof topic !== "object" || Array.isArray(topic)) continue
+    const row = topic as { status?: unknown; needsRecheck?: unknown }
+    if (row.status === "mastered" && row.needsRecheck !== true) {
+      topicsMastered += 1
     }
   }
-  return map
+  return { topicsMastered, topicsTotal: topics.length }
 }
 
 export const listCompletedConceptIds = async (studentId: string) => {

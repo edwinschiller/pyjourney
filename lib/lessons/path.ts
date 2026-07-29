@@ -4,7 +4,7 @@ import {
   type MasteryScoreMap,
 } from "@/lib/curriculum"
 import { NEXT_CONCEPT_DONE_SCORE } from "@/lib/curriculum/next-concept"
-import { hasPyjoLessonForSlug } from "@/lib/pyjo/director"
+import { hasLessonForSlug } from "@/lib/lesson-engine/director"
 
 export type PathNodeStatus =
   | "locked"
@@ -23,11 +23,20 @@ export type LearningPathNode = {
   masteryScore: number
   hasTemplate: boolean
   activeLessonId: string | null
+  /** Topics mastered in the active in-progress lesson (if any). */
+  topicsMastered: number
+  topicsTotal: number
+  /** Started lesson that is not completed yet. */
+  inProgress: boolean
 }
 
 export const buildLearningPath = async (input: {
   masteryByConceptId: MasteryScoreMap
   activeLessonByConceptId: Map<string, string>
+  topicProgressByConceptId?: Map<
+    string,
+    { topicsMastered: number; topicsTotal: number }
+  >
   completedConceptIds: Set<string>
   nextConceptId: string | null
 }) => {
@@ -40,11 +49,16 @@ export const buildLearningPath = async (input: {
       input.masteryByConceptId,
       input.completedConceptIds
     )
-    const hasTemplate = hasPyjoLessonForSlug(concept.slug)
+    const hasTemplate = hasLessonForSlug(concept.slug)
     const completed =
       input.completedConceptIds.has(concept.id) ||
       masteryScore >= NEXT_CONCEPT_DONE_SCORE
     const isNext = input.nextConceptId === concept.id
+    const activeLessonId = input.activeLessonByConceptId.get(concept.id) ?? null
+    const topicProgress = input.topicProgressByConceptId?.get(concept.id)
+    const topicsTotal = topicProgress?.topicsTotal ?? 0
+    const topicsMastered = topicProgress?.topicsMastered ?? 0
+    const inProgress = Boolean(activeLessonId) && !completed
 
     let status: PathNodeStatus
     if (!unlocked) status = "locked"
@@ -62,7 +76,10 @@ export const buildLearningPath = async (input: {
       status,
       masteryScore,
       hasTemplate,
-      activeLessonId: input.activeLessonByConceptId.get(concept.id) ?? null,
+      activeLessonId,
+      topicsMastered,
+      topicsTotal,
+      inProgress,
     }
   })
 

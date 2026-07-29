@@ -1,4 +1,4 @@
-import type { ConceptContentBank } from "@/lib/pyjo/bank/content/variables"
+import type { ConceptContentBank } from "@/lib/lesson-engine/bank/content/variables"
 
 const fb = (correct: string, wrong: string) => ({ correct, wrong })
 

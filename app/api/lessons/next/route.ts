@@ -10,16 +10,20 @@ import {
   updateLessonContent,
 } from "@/lib/lessons/queries"
 import {
+  LessonIntegrityError,
+  verifyLessonEvent,
+} from "@/lib/lessons/verify-event"
+import {
   listStruggleTopicIdsForStudent,
   recordLessonCheckEvent,
 } from "@/lib/memory"
-import { runPyjoNext } from "@/lib/pyjo/director"
+import { runLessonNext } from "@/lib/lesson-engine/director"
 
 export const runtime = "nodejs"
 
 /**
- * POST /api/pyjo/next
- * Core coach endpoint — decides and returns the next micro-blocks.
+ * POST /api/lessons/next
+ * Core lesson engine endpoint — decides and returns the next micro-blocks.
  */
 export const POST = async (request: Request) => {
   try {
@@ -40,19 +44,27 @@ export const POST = async (request: Request) => {
       return NextResponse.json({ error: "Lesson not found" }, { status: 404 })
     }
 
-    const event = body.event
+    const session = parseLessonSession(lesson.content)
+    const allowBootstrap =
+      Boolean(body.bootstrap) && session.blocks.length === 0
+
+    let event = body.event
       ? lessonEventSchema.parse(body.event)
       : undefined
+
+    if (event) {
+      event = verifyLessonEvent(session, event)
+    }
 
     const struggleTopicIds = await listStruggleTopicIdsForStudent(
       user.id,
       lesson.conceptId
     )
 
-    const result = await runPyjoNext({
-      session: parseLessonSession(lesson.content),
+    const result = await runLessonNext({
+      session,
       event,
-      bootstrap: body.bootstrap,
+      bootstrap: allowBootstrap,
       struggleTopicIds,
     })
 
@@ -81,7 +93,13 @@ export const POST = async (request: Request) => {
       source: result.source,
     })
   } catch (error) {
-    console.error("POST /api/pyjo/next", error)
-    return NextResponse.json({ error: "Could not continue the lesson." }, { status: 500 })
+    if (error instanceof LessonIntegrityError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    console.error("POST /api/lessons/next", error)
+    return NextResponse.json(
+      { error: "Could not continue the lesson." },
+      { status: 500 }
+    )
   }
 }
