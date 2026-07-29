@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { JudgeDemo } from "@/components/demo/judge-demo"
+import { ProductDemo } from "@/components/demo/product-demo"
 
 export const metadata: Metadata = {
   title: "Guided product demo | PyJourney",
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 }
 
 const DemoPage = () => {
-  return <JudgeDemo />
+  return <ProductDemo />
 }
 
 export default DemoPage

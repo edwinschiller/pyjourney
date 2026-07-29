@@ -562,7 +562,7 @@ const TeacherView = ({
   </section>
 )
 
-export const JudgeDemo = () => {
+export const ProductDemo = () => {
   const [step, setStep] = useState(0)
   const [replayed, setReplayed] = useState(false)
   const [interventionOpen, setInterventionOpen] = useState(false)
