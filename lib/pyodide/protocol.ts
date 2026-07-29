@@ -26,6 +26,7 @@ export type PyodideWorkerInboundMessage =
       requestId: string
       code: string
       maxSteps?: number
+      inputs?: string[]
     }
   | {
       type: "runTests"
@@ -33,6 +34,7 @@ export type PyodideWorkerInboundMessage =
       code: string
       tests: LessonTestSpec[]
       maxSteps?: number
+      inputs?: string[]
     }
   | { type: "interrupt" }
 

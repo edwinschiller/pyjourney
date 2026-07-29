@@ -9,4 +9,11 @@ export {
   type PythonTestsResult,
 } from "./protocol"
 export { getPyodideClient, PyodideClient } from "./client"
-export { wrapPythonWithExecutionGuard } from "./run-guard"
+export {
+  collectPythonInputs,
+  extractInputPrompts,
+  PYTHON_INPUT_SETUP,
+} from "./input"
+export { wrapPythonWithExecutionGuard, STUDENT_CODE_FILENAME } from "./run-guard"
+export { formatPythonError } from "./format-error"
+export { decodePyodideStreamChunk } from "./stdout"

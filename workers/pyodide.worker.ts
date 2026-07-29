@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 
+import { PYTHON_INPUT_SETUP } from "@/lib/pyodide/input"
 import {
   MAX_OUTPUT_CHARS,
   PYODIDE_CDN,
@@ -9,15 +10,26 @@ import {
   type PyodideWorkerInboundMessage,
   type PyodideWorkerOutboundMessage,
 } from "@/lib/pyodide/protocol"
+import { formatPythonError } from "@/lib/pyodide/format-error"
 import { wrapPythonWithExecutionGuard } from "@/lib/pyodide/run-guard"
+import { decodePyodideStreamChunk } from "@/lib/pyodide/stdout"
 
 declare const loadPyodide: (config?: {
   indexURL?: string
 }) => Promise<{
-  setStdout: (opts: { batched: (text: string) => void }) => void
-  setStderr: (opts: { batched: (text: string) => void }) => void
+  setStdout: (opts: {
+    write?: (buffer: Uint8Array) => number
+    batched?: (text: string) => void
+  }) => void
+  setStderr: (opts: {
+    write?: (buffer: Uint8Array) => number
+    batched?: (text: string) => void
+  }) => void
   setInterruptBuffer?: (buffer: Uint8Array) => void
   runPythonAsync: (code: string) => Promise<unknown>
+  globals: {
+    set: (name: string, value: unknown) => void
+  }
 }>
 
 type PyodideRuntime = Awaited<ReturnType<typeof loadPyodide>>
@@ -86,23 +98,43 @@ const attachIo = (
   state: { stdout: string; stderr: string }
 ) => {
   pyodide.setStdout({
-    batched: (text) => {
-      state.stdout = appendCapped(state.stdout, text)
-      post({ type: "stdout", requestId, text })
+    write: (buffer) => {
+      const text = decodePyodideStreamChunk(buffer)
+      if (text) {
+        state.stdout = appendCapped(state.stdout, text)
+        post({ type: "stdout", requestId, text })
+      }
+      return buffer.byteLength
     },
   })
   pyodide.setStderr({
-    batched: (text) => {
-      state.stderr = appendCapped(state.stderr, text)
-      post({ type: "stderr", requestId, text })
+    write: (buffer) => {
+      const text = decodePyodideStreamChunk(buffer)
+      if (text) {
+        state.stderr = appendCapped(state.stderr, text)
+        post({ type: "stderr", requestId, text })
+      }
+      return buffer.byteLength
     },
   })
+}
+
+const applyInputQueue = async (
+  pyodide: PyodideRuntime,
+  inputs: string[] | undefined
+) => {
+  if (!inputs || inputs.length === 0) {
+    return
+  }
+  pyodide.globals.set("__learnify_inputs", [...inputs])
+  await pyodide.runPythonAsync(PYTHON_INPUT_SETUP)
 }
 
 const runCode = async (
   requestId: string,
   code: string,
-  maxSteps = PYODIDE_MAX_EXECUTION_STEPS
+  maxSteps = PYODIDE_MAX_EXECUTION_STEPS,
+  inputs?: string[]
 ) => {
   beginRequest(requestId)
   const io = { stdout: "", stderr: "" }
@@ -111,6 +143,7 @@ const runCode = async (
   try {
     const pyodide = await ensurePyodide()
     attachIo(pyodide, requestId, io)
+    await applyInputQueue(pyodide, inputs)
 
     const guarded = wrapPythonWithExecutionGuard(code, maxSteps)
     await pyodide.runPythonAsync(guarded)
@@ -124,11 +157,13 @@ const runCode = async (
       runtimeMs: Math.round(performance.now() - started),
     })
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : "Python execution failed."
+    const message = formatPythonError(rawMessage, code)
     const interrupted =
-      /KeyboardInterrupt/i.test(message) || interruptBuffer?.[0] === 2
+      /KeyboardInterrupt/i.test(rawMessage) || interruptBuffer?.[0] === 2
 
+    io.stderr = formatPythonError(io.stderr || message, code)
     if (!io.stderr.includes(message)) {
       io.stderr = appendCapped(io.stderr, `${message}\n`)
     }
@@ -197,7 +232,8 @@ const runTests = async (
   requestId: string,
   code: string,
   tests: LessonTestSpec[],
-  maxSteps = PYODIDE_MAX_EXECUTION_STEPS
+  maxSteps = PYODIDE_MAX_EXECUTION_STEPS,
+  inputs?: string[]
 ) => {
   beginRequest(requestId)
   const io = { stdout: "", stderr: "" }
@@ -206,16 +242,19 @@ const runTests = async (
   try {
     const pyodide = await ensurePyodide()
     attachIo(pyodide, requestId, io)
+    await applyInputQueue(pyodide, inputs)
 
     try {
       const guarded = wrapPythonWithExecutionGuard(code, maxSteps)
       await pyodide.runPythonAsync(guarded)
     } catch (error) {
-      const message =
+      const rawMessage =
         error instanceof Error ? error.message : "Python execution failed."
+      const message = formatPythonError(rawMessage, code)
       const interrupted =
-        /KeyboardInterrupt/i.test(message) || interruptBuffer?.[0] === 2
+        /KeyboardInterrupt/i.test(rawMessage) || interruptBuffer?.[0] === 2
 
+      io.stderr = formatPythonError(io.stderr || message, code)
       if (!io.stderr.includes(message)) {
         io.stderr = appendCapped(io.stderr, `${message}\n`)
       }
@@ -301,7 +340,12 @@ ctx.onmessage = (event: MessageEvent<PyodideWorkerInboundMessage>) => {
   }
 
   if (message.type === "run") {
-    void runCode(message.requestId, message.code, message.maxSteps)
+    void runCode(
+      message.requestId,
+      message.code,
+      message.maxSteps,
+      message.inputs
+    )
     return
   }
 
@@ -310,7 +354,8 @@ ctx.onmessage = (event: MessageEvent<PyodideWorkerInboundMessage>) => {
       message.requestId,
       message.code,
       message.tests,
-      message.maxSteps
+      message.maxSteps,
+      message.inputs
     )
   }
 }

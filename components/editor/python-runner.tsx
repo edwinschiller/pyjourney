@@ -2,6 +2,7 @@
 
 import { Loader2, Play, RotateCcw, Square, TerminalSquare } from "lucide-react"
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -11,9 +12,12 @@ import {
 } from "react"
 
 import { PythonEditor } from "@/components/editor/python-editor"
+import { PythonInputDialog } from "@/components/editor/python-input-dialog"
 import { Button } from "@/components/ui/button"
 import {
+  collectPythonInputs,
   DEFAULT_RUN_TIMEOUT_MS,
+  extractInputPrompts,
   getPyodideClient,
   type PythonRunResult,
 } from "@/lib/pyodide"
@@ -26,6 +30,26 @@ type PythonRunnerProps = {
   toolbarExtra?: ReactNode
   fillHeight?: boolean
   className?: string
+  onTerminalChange?: (terminal: {
+    stdout: string
+    stderr: string
+  }) => void
+}
+
+type InputDialogState = {
+  open: boolean
+  prompt: string
+  value: string
+  index: number
+  total: number
+}
+
+const initialInputDialog: InputDialogState = {
+  open: false,
+  prompt: "",
+  value: "",
+  index: 0,
+  total: 1,
 }
 
 export const PythonRunner = ({
@@ -35,6 +59,7 @@ export const PythonRunner = ({
   toolbarExtra,
   fillHeight = true,
   className,
+  onTerminalChange,
 }: PythonRunnerProps) => {
   const [stdout, setStdout] = useState("")
   const [stderr, setStderr] = useState("")
@@ -43,8 +68,13 @@ export const PythonRunner = ({
   >("loading")
   const [lastResult, setLastResult] = useState<PythonRunResult | null>(null)
   const [engineError, setEngineError] = useState<string | null>(null)
+  const [inputDialog, setInputDialog] =
+    useState<InputDialogState>(initialInputDialog)
   const clientRef = useRef(getPyodideClient())
   const terminalRef = useRef<HTMLPreElement>(null)
+  const pendingInputRef = useRef<{
+    resolve: (value: string | null) => void
+  } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -73,6 +103,10 @@ export const PythonRunner = ({
   }, [])
 
   useEffect(() => {
+    onTerminalChange?.({ stdout, stderr: stderr || engineError || "" })
+  }, [stdout, stderr, engineError, onTerminalChange])
+
+  useEffect(() => {
     terminalRef.current?.scrollTo({
       top: terminalRef.current.scrollHeight,
     })
@@ -88,7 +122,42 @@ export const PythonRunner = ({
     return "Idle"
   }, [status, lastResult])
 
+  const closeInputDialog = useCallback(() => {
+    setInputDialog(initialInputDialog)
+  }, [])
+
+  const cancelPendingInput = useCallback(() => {
+    const pending = pendingInputRef.current
+    if (pending) {
+      pending.resolve(null)
+      pendingInputRef.current = null
+    }
+    closeInputDialog()
+  }, [closeInputDialog])
+
+  const requestPythonInput = useCallback(
+    (prompt: string, index: number, total: number) =>
+      new Promise<string | null>((resolve) => {
+        if (pendingInputRef.current) {
+          resolve(null)
+          return
+        }
+        pendingInputRef.current = { resolve }
+        setInputDialog({ open: true, prompt, value: "", index, total })
+      }),
+    []
+  )
+
+  const handleInputSubmit = useCallback(() => {
+    const pending = pendingInputRef.current
+    if (!pending) return
+    pending.resolve(inputDialog.value)
+    pendingInputRef.current = null
+    closeInputDialog()
+  }, [closeInputDialog, inputDialog.value])
+
   const handleRun = async () => {
+    cancelPendingInput()
     setEngineError(null)
     setStdout("")
     setStderr("")
@@ -96,8 +165,24 @@ export const PythonRunner = ({
     setStatus("running")
 
     try {
+      const inputPrompts = extractInputPrompts(code)
+      let inputs: string[] | undefined
+
+      if (inputPrompts.length > 0) {
+        const collected = await collectPythonInputs(
+          inputPrompts,
+          requestPythonInput
+        )
+        if (collected === null) {
+          setStderr("Input cancelled.\n")
+          return
+        }
+        inputs = collected
+      }
+
       const result = await clientRef.current.run(code, {
         timeoutMs: DEFAULT_RUN_TIMEOUT_MS,
+        inputs,
         onStdout: (text) => setStdout((current) => current + text),
         onStderr: (text) => setStderr((current) => current + text),
       })
@@ -112,6 +197,7 @@ export const PythonRunner = ({
         setStderr(`${result.error}\n`)
       }
     } catch (runError) {
+      cancelPendingInput()
       setEngineError(
         runError instanceof Error
           ? runError.message
@@ -123,11 +209,13 @@ export const PythonRunner = ({
   }
 
   const handleStop = () => {
+    cancelPendingInput()
     clientRef.current.stop()
     setStatus("ready")
   }
 
   const handleClear = () => {
+    cancelPendingInput()
     onCodeChange("")
     setStdout("")
     setStderr("")
@@ -149,11 +237,13 @@ export const PythonRunner = ({
       return <span className="text-destructive">{engineError}</span>
     }
     if (stderr) {
+      const needsGap = Boolean(stdout) && !stdout.endsWith("\n")
       return (
         <>
           {stdout ? (
             <span className="text-[var(--app-fg)]">{stdout}</span>
           ) : null}
+          {needsGap ? "\n" : null}
           <span className="text-destructive">{stderr}</span>
         </>
       )
@@ -274,6 +364,19 @@ export const PythonRunner = ({
           </div>
         </div>
       </div>
+
+      <PythonInputDialog
+        open={inputDialog.open}
+        prompt={inputDialog.prompt}
+        value={inputDialog.value}
+        inputIndex={inputDialog.index}
+        inputTotal={inputDialog.total}
+        onValueChange={(next) =>
+          setInputDialog((current) => ({ ...current, value: next }))
+        }
+        onSubmit={handleInputSubmit}
+        onCancel={cancelPendingInput}
+      />
     </div>
   )
 }

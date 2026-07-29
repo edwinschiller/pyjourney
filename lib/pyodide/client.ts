@@ -195,6 +195,7 @@ export class PyodideClient {
     options?: {
       timeoutMs?: number
       maxSteps?: number
+      inputs?: string[]
     } & RunHandlers
   ): Promise<PythonRunResult> => {
     await this.ensureReady()
@@ -224,6 +225,7 @@ export class PyodideClient {
           requestId,
           code,
           maxSteps: options?.maxSteps,
+          inputs: options?.inputs,
         })
       } catch (error) {
         window.clearTimeout(timeoutId)
@@ -241,6 +243,7 @@ export class PyodideClient {
     options?: {
       timeoutMs?: number
       maxSteps?: number
+      inputs?: string[]
     } & RunHandlers
   ): Promise<PythonTestsResult> => {
     await this.ensureReady()
@@ -271,6 +274,7 @@ export class PyodideClient {
           code,
           tests,
           maxSteps: options?.maxSteps,
+          inputs: options?.inputs,
         })
       } catch (error) {
         window.clearTimeout(timeoutId)
