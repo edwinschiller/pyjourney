@@ -439,6 +439,31 @@ export const savedPrograms = pgTable(
   ]
 )
 
+/** Persisted PyJourney Assistant chats (lesson or IDE scope). */
+export const assistantConversations = pgTable(
+  "assistant_conversations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studentId: text("student_id")
+      .notNull()
+      .references(() => profiles.id),
+    /** lesson | ide */
+    scope: text("scope").notNull(),
+    /** lessonId or python-ide */
+    scopeKey: text("scope_key").notNull(),
+    title: text("title").notNull().default("Chat"),
+    messages: jsonb("messages").notNull().default([]),
+    ...timestamps,
+  },
+  (table) => [
+    index("assistant_conversations_student_scope_idx").on(
+      table.studentId,
+      table.scopeKey,
+      table.updatedAt
+    ),
+  ]
+)
+
 export const auditEvents = pgTable(
   "audit_events",
   {

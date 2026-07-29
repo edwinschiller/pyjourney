@@ -22,6 +22,13 @@
       "when": 1785174974485,
       "tag": "0002_square_magus",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785179000000,
+      "tag": "0003_assistant_conversations",
+      "breakpoints": true
     }
   ]
 }
