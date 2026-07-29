@@ -10,9 +10,9 @@ import {
 } from "@/lib/curriculum"
 import { ACADEMY_CLASS_NAME, ACADEMY_JOIN_CODE } from "@/lib/db/constants"
 import {
-  getMasteryScoreMapForStudent,
   listMasteryForStudent,
   scoreToBand,
+  toMasteryScoreMap,
 } from "@/lib/mastery"
 import { listCompletedConceptIds } from "@/lib/lessons/queries"
 
@@ -27,14 +27,13 @@ const bandLabel = (band: string) => {
 
 const StudentDashboardPage = async () => {
   const user = await requireRole(["student"])
-  const [classrooms, masteryRecords, masteryMap, graph, completedIds] =
-    await Promise.all([
-      listStudentClassrooms(user.id),
-      listMasteryForStudent(user.id),
-      getMasteryScoreMapForStudent(user.id),
-      loadCurriculumGraph(),
-      listCompletedConceptIds(user.id),
-    ])
+  const [classrooms, masteryRecords, graph, completedIds] = await Promise.all([
+    listStudentClassrooms(user.id),
+    listMasteryForStudent(user.id),
+    loadCurriculumGraph(),
+    listCompletedConceptIds(user.id),
+  ])
+  const masteryMap = toMasteryScoreMap(masteryRecords)
   const next = await resolveNextConceptForStudent(user.id, masteryMap, {
     completedConceptIds: completedIds,
   })

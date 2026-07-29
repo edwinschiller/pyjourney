@@ -13,6 +13,10 @@ export {
   listStruggleTopicIdsForStudent,
   listTopicStatsForStudent,
 } from "./queries"
+export {
+  deriveClassIntervention,
+  type ClassIntervention,
+} from "./class-intervention"
 export { resolveMisconceptionTag, sourceFromBlockKind } from "./tags"
 export type {
   ClassInsightsSummary,

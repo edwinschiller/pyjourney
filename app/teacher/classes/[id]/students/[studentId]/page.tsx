@@ -1,27 +1,31 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { eq } from "drizzle-orm"
 
+import { AiReportPanel } from "@/components/insights/ai-report-panel"
+import { InsightsCollapsible } from "@/components/insights/insights-collapsible"
+import {
+  MasteryPanel,
+  RecentChecksPanel,
+} from "@/components/insights/mastery-panel"
+import { StrugglePanel } from "@/components/insights/struggle-panel"
 import { requireRole } from "@/lib/auth/session"
 import { requireOwnedClassroomOrRedirect } from "@/lib/classrooms/access"
+import { getDb } from "@/lib/db"
+import { profiles } from "@/lib/db/schema"
+import {
+  getLatestStudentInsightReport,
+  type InsightReportContentView,
+} from "@/lib/insights/reports"
 import {
   assertStudentInClassroom,
   getStudentInsightsSummary,
 } from "@/lib/memory"
-import { getDb } from "@/lib/db"
-import { profiles } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
 
 export const dynamic = "force-dynamic"
 
 type TeacherStudentInsightsPageProps = {
   params: Promise<{ id: string; studentId: string }>
-}
-
-const bandLabel = (band: string) => {
-  if (band === "mastered") return "Mastered"
-  if (band === "proficient") return "Proficient"
-  if (band === "developing") return "Developing"
-  return "Learning"
 }
 
 const TeacherStudentInsightsPage = async ({
@@ -48,10 +52,16 @@ const TeacherStudentInsightsPage = async ({
   if (!profile) notFound()
 
   const label = profile.displayName?.trim() || profile.email
-  const insights = await getStudentInsightsSummary(studentId)
+  const [insights, report] = await Promise.all([
+    getStudentInsightsSummary(studentId),
+    getLatestStudentInsightReport(studentId),
+  ])
+
+  const reportContent = (report?.content ??
+    null) as InsightReportContentView | null
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 md:px-0 md:py-0">
       <header className="flex flex-col gap-3">
         <Link
           href={`/teacher/classes/${classroom.id}/insights`}
@@ -60,136 +70,97 @@ const TeacherStudentInsightsPage = async ({
         >
           ← Back to class insights
         </Link>
-        <h1 className="text-2xl font-bold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
-          {label}
-        </h1>
-        <p className="text-base text-[var(--app-muted)]">
-          Individual learning evidence in {classroom.name}.
-        </p>
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+            {label}
+          </h1>
+          <p className="mt-1 text-base text-[var(--app-muted)]">
+            Individual AI coaching report and learning evidence in{" "}
+            {classroom.name}.
+          </p>
+        </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-3" aria-label="Summary">
-        <div className="app-surface rounded-xl p-4">
-          <p className="text-xs font-medium tracking-wide text-[var(--app-muted)] uppercase">
+      <AiReportPanel
+        audience="teacher-student"
+        studentId={studentId}
+        classroomId={classroom.id}
+        content={reportContent}
+        generatedAt={report?.generatedAt ?? null}
+        model={report?.model ?? null}
+        showActions={false}
+      />
+
+      <section
+        className="grid gap-3 sm:grid-cols-3"
+        aria-label="Student activity summary"
+      >
+        <div className="app-surface rounded-2xl p-4">
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-[var(--app-muted)] uppercase">
             Checks
           </p>
-          <p className="mt-1 text-2xl font-bold tabular-nums">{insights.totalEvents}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+            {insights.totalEvents}
+          </p>
+          <p className="mt-1 text-xs text-[var(--app-muted)]">
+            Quiz, practice, and apply attempts
+          </p>
         </div>
-        <div className="app-surface rounded-xl p-4">
-          <p className="text-xs font-medium tracking-wide text-[var(--app-muted)] uppercase">
+        <div className="app-surface rounded-2xl p-4">
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-[var(--app-muted)] uppercase">
             Pass rate
           </p>
-          <p className="mt-1 text-2xl font-bold tabular-nums">
+          <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
             {insights.passRate == null ? "—" : `${insights.passRate}%`}
           </p>
-        </div>
-        <div className="app-surface rounded-xl p-4">
-          <p className="text-xs font-medium tracking-wide text-[var(--app-muted)] uppercase">
-            Fails
+          <p className="mt-1 text-xs text-[var(--app-muted)]">
+            {insights.passCount} passed · {insights.failCount} failed
           </p>
-          <p className="mt-1 text-2xl font-bold tabular-nums">{insights.failCount}</p>
+        </div>
+        <div className="app-surface rounded-2xl p-4">
+          <p className="text-[10px] font-semibold tracking-[0.14em] text-[var(--app-muted)] uppercase">
+            Struggle topics
+          </p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
+            {insights.strugglingTopics.length}
+          </p>
+          <p className="mt-1 text-xs text-[var(--app-muted)]">
+            Topics with at least one fail
+          </p>
         </div>
       </section>
 
-      <section className="flex flex-col gap-3" aria-labelledby="t-struggle">
-        <h2
-          id="t-struggle"
-          className="text-lg font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]"
-        >
-          Struggle topics
-        </h2>
-        {insights.strugglingTopics.length === 0 ? (
-          <div className="app-surface rounded-xl p-5 text-sm text-[var(--app-muted)]">
-            No struggle topics recorded yet.
+      <InsightsCollapsible
+        id="teacher-how-to-read"
+        title="How to read this"
+        summary="Quick legend for coaching conversations."
+      >
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="font-medium text-[var(--app-fg)]">Pass rate</dt>
+            <dd className="mt-1 text-[var(--app-muted)]">
+              Passes ÷ all lesson checks. Pair it with struggle topics — a high
+              rate can still hide one sticky idea.
+            </dd>
           </div>
-        ) : (
-          <ul className="app-surface divide-y divide-[var(--app-border)] rounded-xl">
-            {insights.strugglingTopics.map((row) => (
-              <li
-                key={`${row.conceptId}:${row.topicId}`}
-                className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
-              >
-                <div>
-                  <p className="font-medium text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
-                    {row.topicTitle}
-                  </p>
-                  <p className="text-sm text-[var(--app-muted)]">
-                    {row.conceptTitle}
-                  </p>
-                </div>
-                <p className="text-sm font-semibold tabular-nums text-[var(--brand-blue)]">
-                  {row.fails} fails · {row.passes} passes
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          <div>
+            <dt className="font-medium text-[var(--app-fg)]">AI report</dt>
+            <dd className="mt-1 text-[var(--app-muted)]">
+              Combines check stats with recent coding snapshot analyses. Refresh
+              after the learner practices more.
+            </dd>
+          </div>
+        </dl>
+      </InsightsCollapsible>
 
-      <section className="flex flex-col gap-3" aria-labelledby="t-patterns">
-        <h2
-          id="t-patterns"
-          className="text-lg font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]"
-        >
-          Recurring patterns
-        </h2>
-        {insights.topMisconceptions.length === 0 ? (
-          <div className="app-surface rounded-xl p-5 text-sm text-[var(--app-muted)]">
-            No patterns yet.
-          </div>
-        ) : (
-          <ul className="app-surface divide-y divide-[var(--app-border)] rounded-xl">
-            {insights.topMisconceptions.map((row) => (
-              <li
-                key={row.tag}
-                className="flex flex-wrap items-start justify-between gap-3 px-5 py-3"
-              >
-                <p className="min-w-0 font-medium text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
-                  {row.tag}
-                </p>
-                <p className="shrink-0 text-sm font-semibold tabular-nums text-[var(--brand-blue)]">
-                  ×{row.count}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <StrugglePanel
+        topics={insights.strugglingTopics}
+        misconceptions={insights.topMisconceptions}
+      />
 
-      <section className="flex flex-col gap-3" aria-labelledby="t-mastery">
-        <h2
-          id="t-mastery"
-          className="text-lg font-semibold text-[var(--brand-navy)] dark:text-[var(--app-fg)]"
-        >
-          Mastery
-        </h2>
-        {insights.mastery.length === 0 ? (
-          <div className="app-surface rounded-xl p-5 text-sm text-[var(--app-muted)]">
-            No mastery scores yet.
-          </div>
-        ) : (
-          <ul className="app-surface divide-y divide-[var(--app-border)] rounded-xl">
-            {insights.mastery.map((row) => (
-              <li
-                key={row.conceptId}
-                className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
-              >
-                <div>
-                  <p className="font-medium text-[var(--brand-navy)] dark:text-[var(--app-fg)]">
-                    {row.conceptTitle}
-                  </p>
-                  <p className="text-sm text-[var(--app-muted)]">
-                    {bandLabel(row.band)}
-                  </p>
-                </div>
-                <p className="font-mono text-sm font-semibold text-[var(--brand-blue)]">
-                  {row.score}/100
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <MasteryPanel mastery={insights.mastery} />
+
+      <RecentChecksPanel events={insights.recentEvents} />
     </div>
   )
 }

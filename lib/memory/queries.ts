@@ -23,9 +23,13 @@ import type {
 } from "./types"
 
 export const listTopicStatsForStudent = async (
-  studentId: string
+  studentId: string,
+  options?: { strugglingOnly?: boolean; limit?: number }
 ): Promise<TopicStatRow[]> => {
   const db = getDb()
+  const strugglingOnly = options?.strugglingOnly ?? false
+  const limit = options?.limit
+
   const rows = await db
     .select({
       conceptId: learnerTopicStats.conceptId,
@@ -42,8 +46,16 @@ export const listTopicStatsForStudent = async (
     })
     .from(learnerTopicStats)
     .innerJoin(concepts, eq(concepts.id, learnerTopicStats.conceptId))
-    .where(eq(learnerTopicStats.studentId, studentId))
+    .where(
+      strugglingOnly
+        ? and(
+            eq(learnerTopicStats.studentId, studentId),
+            sql`${learnerTopicStats.fails} > 0`
+          )
+        : eq(learnerTopicStats.studentId, studentId)
+    )
     .orderBy(desc(learnerTopicStats.fails), desc(learnerTopicStats.lastSeenAt))
+    .limit(limit ?? 100)
 
   return rows.map((row) => ({
     conceptId: row.conceptId,
@@ -122,23 +134,18 @@ export const getStudentInsightsSummary = async (
 ): Promise<StudentInsightsSummary> => {
   const db = getDb()
 
-  const [counts] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      passes: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'pass')::int`,
-      fails: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'fail')::int`,
-    })
-    .from(learnerEvents)
-    .where(eq(learnerEvents.studentId, studentId))
-
-  const totalEvents = counts?.total ?? 0
-  const passCount = counts?.passes ?? 0
-  const failCount = counts?.fails ?? 0
-
-  const [topicStats, misconceptions, recentEvents, masteryRows] =
+  const [countRows, topicStats, misconceptions, recentEvents, masteryRows] =
     await Promise.all([
-      listTopicStatsForStudent(studentId),
-      listMisconceptionStatsForStudent(studentId),
+      db
+        .select({
+          total: sql<number>`count(*)::int`,
+          passes: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'pass')::int`,
+          fails: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'fail')::int`,
+        })
+        .from(learnerEvents)
+        .where(eq(learnerEvents.studentId, studentId)),
+      listTopicStatsForStudent(studentId, { strugglingOnly: true, limit: 8 }),
+      listMisconceptionStatsForStudent(studentId, 8),
       listRecentEventsForStudent(studentId),
       db
         .select({
@@ -153,13 +160,18 @@ export const getStudentInsightsSummary = async (
         .orderBy(concepts.orderIndex),
     ])
 
+  const counts = countRows[0]
+  const totalEvents = counts?.total ?? 0
+  const passCount = counts?.passes ?? 0
+  const failCount = counts?.fails ?? 0
+
   return {
     totalEvents,
     passCount,
     failCount,
     passRate: totalEvents > 0 ? Math.round((passCount / totalEvents) * 100) : null,
-    strugglingTopics: topicStats.filter((row) => row.fails > 0).slice(0, 8),
-    topMisconceptions: misconceptions.slice(0, 8),
+    strugglingTopics: topicStats,
+    topMisconceptions: misconceptions,
     recentEvents,
     mastery: masteryRows.map((row) => ({
       conceptId: row.conceptId,
@@ -223,75 +235,78 @@ export const getClassInsightsSummary = async (
     }
   }
 
-  const [eventCounts] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      passes: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'pass')::int`,
-      fails: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'fail')::int`,
-    })
-    .from(learnerEvents)
-    .where(inArray(learnerEvents.studentId, studentIds))
-
-  const struggleRows = await db
-    .select({
-      topicId: learnerTopicStats.topicId,
-      topicTitle: learnerTopicStats.topicTitle,
-      conceptTitle: concepts.title,
-      studentCount: sql<number>`count(distinct ${learnerTopicStats.studentId})::int`,
-      totalFails: sql<number>`sum(${learnerTopicStats.fails})::int`,
-    })
-    .from(learnerTopicStats)
-    .innerJoin(concepts, eq(concepts.id, learnerTopicStats.conceptId))
-    .where(
-      and(
-        inArray(learnerTopicStats.studentId, studentIds),
-        sql`${learnerTopicStats.fails} > 0`
-      )
-    )
-    .groupBy(
-      learnerTopicStats.topicId,
-      learnerTopicStats.topicTitle,
-      concepts.title
-    )
-    .orderBy(sql`sum(${learnerTopicStats.fails}) desc`)
-    .limit(8)
-
-  const misconceptionRows = await db
-    .select({
-      tag: learnerMisconceptionStats.tag,
-      studentCount: sql<number>`count(distinct ${learnerMisconceptionStats.studentId})::int`,
-      totalCount: sql<number>`sum(${learnerMisconceptionStats.count})::int`,
-    })
-    .from(learnerMisconceptionStats)
-    .where(inArray(learnerMisconceptionStats.studentId, studentIds))
-    .groupBy(learnerMisconceptionStats.tag)
-    .orderBy(sql`sum(${learnerMisconceptionStats.count}) desc`)
-    .limit(8)
-
-  const perStudent = await db
-    .select({
-      studentId: learnerEvents.studentId,
-      passes: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'pass')::int`,
-      fails: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'fail')::int`,
-    })
-    .from(learnerEvents)
-    .where(inArray(learnerEvents.studentId, studentIds))
-    .groupBy(learnerEvents.studentId)
-
-  const topTopicByStudent = await db
-    .select({
-      studentId: learnerTopicStats.studentId,
-      topicTitle: learnerTopicStats.topicTitle,
-      fails: learnerTopicStats.fails,
-    })
-    .from(learnerTopicStats)
-    .where(
-      and(
-        inArray(learnerTopicStats.studentId, studentIds),
-        sql`${learnerTopicStats.fails} > 0`
-      )
-    )
-    .orderBy(desc(learnerTopicStats.fails))
+  const [eventCounts, struggleRows, misconceptionRows, perStudent, topTopicByStudent] =
+    await Promise.all([
+      db
+        .select({
+          total: sql<number>`count(*)::int`,
+          passes: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'pass')::int`,
+          fails: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'fail')::int`,
+        })
+        .from(learnerEvents)
+        .where(inArray(learnerEvents.studentId, studentIds))
+        .then((rows) => rows[0]),
+      db
+        .select({
+          topicId: learnerTopicStats.topicId,
+          topicTitle: learnerTopicStats.topicTitle,
+          conceptTitle: concepts.title,
+          studentCount: sql<number>`count(distinct ${learnerTopicStats.studentId})::int`,
+          totalFails: sql<number>`sum(${learnerTopicStats.fails})::int`,
+        })
+        .from(learnerTopicStats)
+        .innerJoin(concepts, eq(concepts.id, learnerTopicStats.conceptId))
+        .where(
+          and(
+            inArray(learnerTopicStats.studentId, studentIds),
+            sql`${learnerTopicStats.fails} > 0`
+          )
+        )
+        .groupBy(
+          learnerTopicStats.topicId,
+          learnerTopicStats.topicTitle,
+          concepts.title
+        )
+        .orderBy(sql`sum(${learnerTopicStats.fails}) desc`)
+        .limit(8),
+      db
+        .select({
+          tag: learnerMisconceptionStats.tag,
+          studentCount: sql<number>`count(distinct ${learnerMisconceptionStats.studentId})::int`,
+          totalCount: sql<number>`sum(${learnerMisconceptionStats.count})::int`,
+        })
+        .from(learnerMisconceptionStats)
+        .where(inArray(learnerMisconceptionStats.studentId, studentIds))
+        .groupBy(learnerMisconceptionStats.tag)
+        .orderBy(sql`sum(${learnerMisconceptionStats.count}) desc`)
+        .limit(8),
+      db
+        .select({
+          studentId: learnerEvents.studentId,
+          passes: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'pass')::int`,
+          fails: sql<number>`count(*) filter (where ${learnerEvents.outcome} = 'fail')::int`,
+        })
+        .from(learnerEvents)
+        .where(inArray(learnerEvents.studentId, studentIds))
+        .groupBy(learnerEvents.studentId),
+      db
+        .select({
+          studentId: learnerTopicStats.studentId,
+          topicTitle: learnerTopicStats.topicTitle,
+          fails: learnerTopicStats.fails,
+        })
+        .from(learnerTopicStats)
+        .where(
+          and(
+            inArray(learnerTopicStats.studentId, studentIds),
+            sql`${learnerTopicStats.fails} > 0`
+          )
+        )
+        .orderBy(
+          learnerTopicStats.studentId,
+          desc(learnerTopicStats.fails)
+        ),
+    ])
 
   const struggleTopicLookup = new Map<string, string>()
   for (const row of topTopicByStudent) {
