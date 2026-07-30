@@ -99,7 +99,9 @@ const PrivacyPage = () => {
         <p>
           PyJourney uses technically necessary storage (for example auth
           session cookies and a theme preference in local storage). It does not
-          use marketing or analytics cookies.
+          use marketing cookies. Aggregated traffic data may be collected via
+          Vercel Web Analytics, which is designed to work without advertising
+          cookies.
         </p>
       </LegalSection>
 

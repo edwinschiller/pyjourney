@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { Analytics } from "@vercel/analytics/next"
 
 import { ThemeProvider } from "@/components/theme/theme-provider"
 
@@ -53,6 +54,7 @@ const RootLayout = ({
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <ThemeProvider>{children}</ThemeProvider>
+        <Analytics />
       </body>
     </html>
   )
