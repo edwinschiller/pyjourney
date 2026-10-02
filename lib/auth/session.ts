@@ -218,6 +218,11 @@ export const ensureProfile = async (
     return toSessionUser(created)
   }, { label: "ensureProfile" })
 
+/**
+ * Resolve the signed-in app profile without creating one.
+ * New accounts are created only via `/api/auth/bootstrap` so a registration
+ * role (teacher/student) is applied — never defaulted to student first.
+ */
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   if (!isNeonAuthConfigured()) {
     return null
@@ -235,11 +240,41 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     return null
   }
 
-  const profile = await ensureProfile({
-    id: user.id,
-    email: user.email,
-    displayName: user.name ?? null,
-  })
+  const userId = user.id
+  const userEmail = user.email
+
+  const profile = await withDbRetry(async () => {
+    const db = getDb()
+    const existingById = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, userId))
+      .limit(1)
+
+    const row = existingById[0]
+    if (!row) {
+      return null
+    }
+
+    if (row.email === userEmail) {
+      return toSessionUser(row)
+    }
+
+    const [updated] = await db
+      .update(profiles)
+      .set({
+        email: userEmail,
+        updatedAt: new Date(),
+      })
+      .where(eq(profiles.id, userId))
+      .returning()
+
+    return toSessionUser(updated)
+  }, { label: "getSessionUser" })
+
+  if (!profile) {
+    return null
+  }
 
   if (profile.role === "student") {
     try {

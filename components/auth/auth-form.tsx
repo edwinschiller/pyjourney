@@ -14,6 +14,11 @@ import {
   getAuthErrorMessage,
   isEmailNotVerifiedError,
 } from "@/lib/auth/errors"
+import {
+  clearRegistrationRole,
+  readRegistrationRole,
+  saveRegistrationRole,
+} from "@/lib/auth/registration-intent"
 import { cn } from "@/lib/utils"
 
 type AuthMode = "signin" | "register"
@@ -103,7 +108,9 @@ export const AuthForm = () => {
     searchParams.get("mode") === "register" ? "register" : "signin"
   const [mode, setMode] = useState<AuthMode>(initialMode)
   const [step, setStep] = useState<AuthStep>("credentials")
-  const [accountRole, setAccountRole] = useState<AccountRole>("student")
+  const [accountRole, setAccountRole] = useState<AccountRole>(
+    () => readRegistrationRole() ?? "student"
+  )
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
@@ -121,6 +128,12 @@ export const AuthForm = () => {
   }
 
   const handleCompleteLogin = async () => {
+    // sessionStorage survives AuthForm remounts during email verify;
+    // React state alone can reset to the student default.
+    const pendingRole =
+      readRegistrationRole() ??
+      (mode === "register" ? accountRole : null)
+
     const response = await fetch("/api/auth/bootstrap", {
       method: "POST",
       credentials: "include",
@@ -128,7 +141,7 @@ export const AuthForm = () => {
       body: JSON.stringify({
         // Role is registration intent only. Existing profile roles are
         // authoritative and never changed by this request.
-        role: mode === "register" ? accountRole : undefined,
+        role: pendingRole ?? undefined,
       }),
     })
 
@@ -155,6 +168,7 @@ export const AuthForm = () => {
       return
     }
 
+    clearRegistrationRole()
     router.push(getDashboardPath(data.user.role))
     router.refresh()
   }
@@ -193,6 +207,7 @@ export const AuthForm = () => {
 
     try {
       if (mode === "register") {
+        saveRegistrationRole(accountRole)
         const result = await authClient.signUp.email({
           email,
           password,
@@ -301,7 +316,10 @@ export const AuthForm = () => {
                   sublabel="Join Academy"
                   icon={GraduationCap}
                   accent="blue"
-                  onClick={() => setAccountRole("student")}
+                  onClick={() => {
+                    setAccountRole("student")
+                    saveRegistrationRole("student")
+                  }}
                 />
                 <RoleSwitch
                   active={accountRole === "teacher"}
@@ -309,7 +327,10 @@ export const AuthForm = () => {
                   sublabel="Create classes"
                   icon={School}
                   accent="yellow"
-                  onClick={() => setAccountRole("teacher")}
+                  onClick={() => {
+                    setAccountRole("teacher")
+                    saveRegistrationRole("teacher")
+                  }}
                 />
               </div>
             </div>

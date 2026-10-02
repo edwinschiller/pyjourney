@@ -8,6 +8,10 @@ import { ensureAcademyMembership } from "@/lib/db/academy"
 
 export type BootstrapRole = Extract<UserRole, "student" | "teacher">
 
+/**
+ * Finish sign-in / registration by creating the app profile when missing.
+ * Pass `role` only for first-time registration; existing profiles keep their role.
+ */
 export const bootstrapAppUser = async (input: {
   role?: BootstrapRole
 }): Promise<SessionUser | null> => {

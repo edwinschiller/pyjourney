@@ -40,3 +40,13 @@ test("uses the selected role for a new profile", () => {
 test("defaults a new profile to student", () => {
   assert.equal(resolveProfileRole({}), "student")
 })
+
+test("registration teacher wins when no current role exists", () => {
+  assert.equal(
+    resolveProfileRole({
+      currentRole: undefined,
+      registrationRole: "teacher",
+    }),
+    "teacher"
+  )
+})
