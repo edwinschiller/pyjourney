@@ -125,6 +125,16 @@ export const AuthForm = () => {
     setError(null)
     setInfo(null)
     setOtp("")
+    if (nextMode === "signin") {
+      clearRegistrationRole()
+    }
+    const url = new URL(window.location.href)
+    if (nextMode === "register") {
+      url.searchParams.set("mode", "register")
+    } else {
+      url.searchParams.delete("mode")
+    }
+    window.history.replaceState(null, "", url.pathname + url.search)
   }
 
   const handleCompleteLogin = async () => {
@@ -205,9 +215,17 @@ export const AuthForm = () => {
     setInfo(null)
     setIsPending(true)
 
+    const formData = new FormData(event.currentTarget)
+    const roleField = formData.get("accountRole")
+    const selectedRole: AccountRole =
+      roleField === "teacher" || roleField === "student"
+        ? roleField
+        : accountRole
+
     try {
       if (mode === "register") {
-        saveRegistrationRole(accountRole)
+        setAccountRole(selectedRole)
+        saveRegistrationRole(selectedRole)
         const result = await authClient.signUp.email({
           email,
           password,
@@ -219,7 +237,7 @@ export const AuthForm = () => {
         if (result.data?.user?.emailVerified === false) {
           setStep("verify")
           setInfo(
-            accountRole === "student"
+            selectedRole === "student"
               ? "Enter the code from your email. You’ll join PyJourney Academy."
               : "Enter the code from your email to start teaching."
           )
@@ -370,6 +388,9 @@ export const AuthForm = () => {
           </div>
 
           <form className="space-y-4" onSubmit={handleCredentialsSubmit}>
+            {mode === "register" && (
+              <input type="hidden" name="accountRole" value={accountRole} />
+            )}
             {mode === "register" && (
               <div className="space-y-2">
                 <Label htmlFor="name">Display name</Label>

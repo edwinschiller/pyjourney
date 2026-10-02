@@ -25,7 +25,8 @@ const AdminUsersPage = async () => {
         </h1>
         <p className="text-base text-[var(--app-muted)]">
           Change roles and account status. Login cannot escalate a student to
-          teacher — only this page (or registration) sets roles.
+          teacher — only this page or a fresh registration (new auth user)
+          sets roles.
         </p>
       </header>
 

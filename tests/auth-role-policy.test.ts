@@ -1,9 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { resolveProfileRole } from "../lib/auth/role-policy"
+import {
+  resolveProfileRole,
+  resolveReclaimedProfileRole,
+} from "../lib/auth/role-policy"
 
-test("keeps an existing student role when teacher is requested", () => {
+test("existing profile lookup keeps student (login cannot escalate)", () => {
   assert.equal(
     resolveProfileRole({
       currentRole: "student",
@@ -13,7 +16,7 @@ test("keeps an existing student role when teacher is requested", () => {
   )
 })
 
-test("keeps an existing teacher role when student is requested", () => {
+test("existing profile lookup keeps teacher", () => {
   assert.equal(
     resolveProfileRole({
       currentRole: "teacher",
@@ -23,7 +26,7 @@ test("keeps an existing teacher role when student is requested", () => {
   )
 })
 
-test("preserves admin roles", () => {
+test("preserves admin roles on normal resolve", () => {
   assert.equal(
     resolveProfileRole({
       currentRole: "admin",
@@ -41,12 +44,41 @@ test("defaults a new profile to student", () => {
   assert.equal(resolveProfileRole({}), "student")
 })
 
-test("registration teacher wins when no current role exists", () => {
+test("reclaim after auth delete applies teacher registration", () => {
   assert.equal(
-    resolveProfileRole({
-      currentRole: undefined,
+    resolveReclaimedProfileRole({
+      currentRole: "student",
       registrationRole: "teacher",
     }),
     "teacher"
+  )
+})
+
+test("reclaim after auth delete applies student registration", () => {
+  assert.equal(
+    resolveReclaimedProfileRole({
+      currentRole: "teacher",
+      registrationRole: "student",
+    }),
+    "student"
+  )
+})
+
+test("reclaim without registration intent keeps prior role", () => {
+  assert.equal(
+    resolveReclaimedProfileRole({
+      currentRole: "teacher",
+    }),
+    "teacher"
+  )
+})
+
+test("reclaim never overwrites admin", () => {
+  assert.equal(
+    resolveReclaimedProfileRole({
+      currentRole: "admin",
+      registrationRole: "teacher",
+    }),
+    "admin"
   )
 })

@@ -28,6 +28,7 @@ import { ensureAcademyMembership } from "@/lib/db/academy"
 import { withDbRetry } from "@/lib/db/retry"
 import {
   resolveProfileRole,
+  resolveReclaimedProfileRole,
   type RegistrationRole,
 } from "@/lib/auth/role-policy"
 export type UserRole = "student" | "teacher" | "admin"
@@ -170,7 +171,9 @@ export const ensureProfile = async (
 
     if (existingByEmail[0]) {
       const old = existingByEmail[0]
-      const nextRole = resolveProfileRole({
+      // Auth identity was recreated for this email — apply registration intent
+      // (e.g. deleted Neon user, then register again as teacher).
+      const nextRole = resolveReclaimedProfileRole({
         currentRole: old.role,
         registrationRole: input.role,
       })
